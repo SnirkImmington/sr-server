@@ -7,6 +7,7 @@ import (
 	gorillaMux "github.com/gorilla/mux"
 	"io"
 	"log"
+	"net/http"
 	"srserver/config"
 	"strings"
 )
@@ -39,7 +40,12 @@ func MakeServerMux() *gorillaMux.Router {
 	mux.HandleFunc("/roll", loggedHandler(handleRoll)).Methods("POST")
 
 	mux.HandleFunc("/", loggedHandler(func(response Response, request *Request) {
-		io.WriteString(response, "Maybe try https://snirkimmington.github.io/shadowroller ?")
+		if config.IsProduction {
+			log.Print("-> 307 Moved Temporarily shadowroller")
+			http.Redirect(response, request, config.FrontendAddress, http.StatusTemporaryRedirect)
+		} else {
+			io.WriteString(response, "Hello world!")
+		}
 	})).Methods("GET")
 
 	mux.HandleFunc("/health-check", loggedHandler(func(response Response, request *Request) {
