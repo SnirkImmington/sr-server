@@ -31,9 +31,10 @@ var (
 	// server. The ResponseWriters we get can't set individual timeouts, so we can't
 	// have write timeouts for regular requests AND sse.
 	//SSEWriteTimeoutSecs = readInt("SSE_WRITE_TIMEOUT_SECS", 30)
-	SSEClientRetrySecs = readInt("SSE_CLIENT_RETRY_SECS", 5)
-	SSEPingSecs        = readInt("SSE_PING_SECS", 20)
-	MaxHeaderBytes     = readInt("MAX_HEADER_BYTES", 1<<20)
+	SSEClientRetrySecs  = readInt("SSE_CLIENT_RETRY_SECS", 5)
+	SSEPingSecs         = readInt("SSE_PING_SECS", 20)
+	MaxRequstsPerMinute = readInt("MAX_REQUESTS_PER_MINUTE", 4*60)
+	MaxHeaderBytes      = readInt("MAX_HEADER_BYTES", 1<<20)
 	// LibraryOptions
 	RedisUrl = readString("REDIS_URL", "redis://:6379")
 	// Backend options
