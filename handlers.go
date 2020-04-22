@@ -8,18 +8,14 @@ import (
 	"srserver/config"
 )
 
+type Handler = http.Handler
 type Request = http.Request
 type Response = http.ResponseWriter
 
 type HandlerFunc = func(Response, *Request)
 
-func loggedHandler(wrapped HandlerFunc) http.HandlerFunc {
-	return func(response Response, request *Request) {
-		if config.IsProduction {
-			log.Println(request.Proto, request.Method, request.RequestURI)
-		} else {
-			log.Println(request.Method, request.URL)
-		}
+func recoveryMiddleware(next Handler) Handler {
+	return http.HandlerFunc(func(response Response, request *Request) {
 		defer func() {
 			if err := recover(); err != nil {
 				message := fmt.Sprintf("Panic serving", request.Method, request.URL, "to", request.Host)
@@ -28,6 +24,27 @@ func loggedHandler(wrapped HandlerFunc) http.HandlerFunc {
 				http.Error(response, "Internal Server Error", http.StatusInternalServerError)
 			}
 		}()
-		wrapped(response, request)
-	}
+		next.ServeHTTP(response, request)
+	})
+}
+
+func loggedMiddleware(next Handler) http.HandlerFunc {
+	return http.HandlerFunc(func(response Response, request *Request) {
+		if config.IsProduction {
+			log.Println(request.Proto, request.Method, request.RequestURI)
+		} else {
+			log.Println(request.Method, request.URL)
+		}
+		next.ServeHTTP(response, request)
+	})
+}
+
+func hstsMiddleware(next Handler) http.HandlerFunc {
+	return http.HandlerFunc(func(response Response, request *Request) {
+		response.Header().Add(
+			"Strict-Transport-Security",
+			"max-age=63072000; preload",
+		)
+		next.ServeHTTP(response, request)
+	})
 }
