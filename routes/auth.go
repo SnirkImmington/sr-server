@@ -13,85 +13,106 @@ import (
 
 var authRouter = router.PathPrefix("/auth").Subrouter()
 
-// POST /auth/login { gameID, playerID, playerName }
-var _ = gameRouter.HandleFunc("/login", login).Methods("POST")
-
-type loginRequest struct {
-	gameID     string `json:"gameID"`
-	playerName string `json:"playerName"`
-}
-
 type loginResponse struct {
 	playerID      string      `json:"playerID"`
 	game          sr.GameInfo `json:"game"`
 	newestEventID string      `json:"newestEventID"`
 	token         string      `json:"authToken"`
-	sessionID     string      `json:"sessionID"`
+	sessionToken  string      `json:"sessionToken"`
 }
+
+// POST /auth/login { gameID, playerID, playerName }
+var _ = gameRouter.HandleFunc("/login", login).Methods("POST")
 
 func login(response Response, request *Request) {
 	logRequest(request)
-	var loginRequest loginRequest
-	err := readBodyJSON(request, &loginRequest)
-	if err != nil {
-		httpInvalidRequest(response, request, "Invalid request")
+	var loginRequest struct {
+		gameID     string `json:"gameID"`
+		playerName string `json:"playerName"`
 	}
+	err := readBodyJSON(request, &loginRequest)
+	if err != nil && httpInvalidRequest(response, request, err) {
+		return
+	}
+	playerName := loginRequest.playerName
 
 	conn := sr.RedisPool.Get()
 	defer sr.CloseRedis(conn)
 
+	// Check for permission to join (if game ID exists)
 	if !sr.GameExists(loginRequest.gameID, conn) {
 		httpUnauthorized(response, request, errGameNotFound)
 		return
 	}
 
-	playerID := sr.GenUID()
-	sr.AddPlayerToGame(playerID, loginRequest.playerName)
-	sessionID := sr.MakeSession(playerID, gameID, loginRequest.playerName)
-	gameInfo := sr.GameInfo(gameID)
+	// Create player
+	auth := sr.AddPlayerToGame(loginRequest.playerName, conn)
 
+	// Post event
 	event := sr.PlayerJoinEvent{
 		EventCore:  sr.EventCore{Type: "playerJoin"},
-		PlayerID:   playerID,
-		PlayerName: join.PlayerName,
+		PlayerID:   auth.playerID,
+		PlayerName: auth.PlayerName,
 	}
 	newestEventID, err := sr.PostEvent(join.GameID, event, conn)
-	if err != nil {
-		httpInternalError(response, request, err)
+	if err != nil && httpInternalError(response, request, err) {
 		return
 	}
-
 	logf(request, "%v (%v) has joined %v",
 		playerID, loginRequest.playerName, loginRequest.gameID,
 	)
 
-	token, err := createAuthToken(loginRquest)
-	if err != nil {
-		httpInternalError(response, request, err)
+	// Create session and auth
+	session, err := sr.MakeSession(playerID, gameID, playerName, conn)
+	if err != nil && httpInternalError(response, request, err) {
+		return
+	}
+	// Create response
+	sessionToken, err := createSessionToken(sessionID, conn)
+	if err != nil && httpInternalError(response, request, err) {
+		return
+	}
+	authToken, err := createAuthToken(auth, conn)
+	if err != nil && httpInternalError(response, request, err) {
+		return
 	}
 
 	loggedIn := loginResponse{
-		playerID:    playerID,
-		game:        gameInfo,
-		lastEventID: newestEventID,
-		authToken:   token,
-		sessionID:   sessionID,
+		playerID:     playerID,
+		game:         gameInfo,
+		lastEventID:  newestEventID,
+		authToken:    token,
+		sessionToken: sessionToken,
+	}
+	err = writeBodyJSON(response, loggedIn)
+	if err != nil && httpInternalError(response, request, err) {
+		return
+	}
+	httpSuccess(response, request)
+}
+
+type reauthResponse struct {
+	sessionToken string `json:"sessionToken"`
+}
+
+var _ = authRouter.HandleFunc("/reauth", reauth).Methods("POST")
+
+func reauth(response Response, request *Request) {
+	logRequest(request)
+	var authRequest struct {
+		token string `json:"token"`
+	}
+	err := readBodyJSON(request, &authRequest)
+	if err != nil && httpInternalError(response, request, err) {
+		return
 	}
 
-}
+	// Check the auth
+	auth, err := sr.AuthFromToken(authRequest.token)
+	if err != nil && httpInvalidRequest(response, request, err) {
+		return
+	}
 
-type Session struct {
-	ID       string `redis:"-"`
-	GameID   string `redis:"gameID"`
-	PlayerID string `redis:"playerID"`
-
-	Playername string `redis:"playerName"`
-	jwt.StandardClaims
-}
-
-type SessionToken struct {
-	Version string `json:"sr.v"`
-	jwt.StandardClaims
 }
 
 type AuthToken struct {
