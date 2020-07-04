@@ -70,19 +70,23 @@ func SessionExists(sessionID string, conn redis.Conn) (bool, error) {
 }
 
 // GetSessionByID retrieves a session from redis.
-func GetSessionByID(sessionID string, conn redis.Conn) (*Session, error) {
+func GetSessionByID(sessionID string, conn redis.Conn) (Session, error) {
 	var session Session
-	data, err := redis.Values(conn.Do("HGETALL", "session:"+sessionID))
+	data, err := redis.Values(conn.Do("HGETALL", session.redisKey()))
 	if err != nil {
-		return nil, err
+		return Session{}, err
 	}
 	err = redis.ScanStruct(data, &session)
 	if err != nil {
-		return nil, err
+		return Session{}, err
 	}
 	session.ID = UID(sessionID)
 
-	return &session, nil
+	return session, nil
+}
+
+func RemoveSession(session *Session, conn redis.Conn) (bool, error) {
+	return redis.Bool(conn.Do("del", session.redisKey()))
 }
 
 // ExpireSession sets the session to expire in `config.SesssionExpirySecs`.
