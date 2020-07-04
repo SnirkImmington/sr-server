@@ -8,6 +8,10 @@ import (
 // UID is the base type of random IDs used in Shadowroller.
 type UID string
 
+func (uid UID) String() string {
+	return string(uid)
+}
+
 // PlayerID is the random ID of players.
 type PlayerID UID
 
