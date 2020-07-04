@@ -45,6 +45,9 @@ var (
 	JWTSecretKey = readKeyFile("KEYFILE_JWT", "133713371337")
 	// AuthCookieMaxAge is the "Max-Age" field on JWT auth token cookies.
 	AuthCookieMaxAge = readInt("COOKIE_MAX_AGE", 2592000) // 30 days
+	// SessionExpirySecs is the amount of time a session remains after the
+	// frontend disconnects from the game subscription
+	SessionExpirySecs = readInt("SESSION_EXPIRY", 15*60)
 
 	// TLS configs
 
