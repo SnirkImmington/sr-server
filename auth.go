@@ -1,98 +1,73 @@
-package srserver
+package sr
 
 // Authentication
 
 import (
-	cryptoRand "crypto/rand"
-	"encoding/base64"
+	"errors"
 	"fmt"
 	"github.com/dgrijalva/jwt-go"
-	jwtRequest "github.com/dgrijalva/jwt-go/request"
-	"math/rand"
-	"net/http"
-	"srserver/config"
+	"github.com/gomodule/redigo/redis"
+	"log"
+	"sr/config"
 )
 
-type AuthClaims struct {
-	GameID     string `json:"gid"`
-	PlayerID   string `json:"pid"`
-	PlayerName string `json:"pname"`
-	jwt.StandardClaims
+// Auth represents a user's credentials of a player in a game.
+// Auth additionally has a `version` tag which allows us to unauthorize
+// everyone.
+type Auth struct {
+	GameID   string `json:"gameID"`
+	PlayerID string `json:"playerID"`
+	Version  int    `json:"v"`
+
+	// Player name is tied to auth concept for now.
+	PlayerName string `json:"playerName"`
 }
 
-func (auth *AuthClaims) String() string {
+func (auth *Auth) String() string {
 	return fmt.Sprintf("%v (%v) in %v",
 		auth.PlayerID, auth.PlayerName, auth.GameID,
 	)
 }
 
-func GenUID() string {
-	bytes := make([]byte, 6)
-	rand.Read(bytes)
-	return base64.StdEncoding.EncodeToString(bytes)
-}
-
-func GenKey(size int64) string {
-	bytes := make([]byte, size)
-	cryptoRand.Read(bytes)
-	return base64.URLEncoding.EncodeToString(bytes)
-}
-
-func getJWTSecretKey(token *jwt.Token) (interface{}, error) {
+func GetJWTSecretKey(token *jwt.Token) (interface{}, error) {
 	if token.Method != jwt.SigningMethodHS256 {
 		return nil, jwt.ErrInvalidKeyType
 	}
 	return config.JWTSecretKey, nil
 }
 
-func createAuthCookie(gameID string, playerID string, playerName string) (*http.Cookie, error) {
-	claims := AuthClaims{
-		GameID:     gameID,
-		PlayerID:   playerID,
-		PlayerName: playerName,
-		StandardClaims: jwt.StandardClaims{
-			Issuer: "sr-server",
-		},
-	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	signed, err := token.SignedString(config.JWTSecretKey)
+func AuthVersion(conn redis.Conn) (int, error) {
+	return redis.Int(conn.Do("get", "auth_version"))
+}
+
+func CreateAuth(gameID string, playerID string, playerName string, conn redis.Conn) (*Auth, error) {
+	version, err := AuthVersion(conn)
 	if err != nil {
+		log.Printf("Unable to get auth version from redis: %v", err)
 		return nil, err
 	}
 
-	return &http.Cookie{
-		Name:  "srAuth",
-		Value: signed,
-		// Domain:   config.CookieAddress,
-		Secure:   config.IsProduction, // http cookies on local env
-		SameSite: http.SameSiteNoneMode,
-		HttpOnly: false, // JS should read cookie to reconnect
-		MaxAge:   config.AuthCookieMaxAge,
+	return &Auth{
+		GameID:     gameID,
+		PlayerID:   playerID,
+		Version:    version,
+		PlayerName: playerName,
 	}, nil
 }
 
-type CookieExtractor struct{ Name string } // name of cookie to extract
-func (c *CookieExtractor) ExtractToken(request *Request) (string, error) {
-	cookie, err := request.Cookie(c.Name)
+var AuthVersionError = errors.New("auth has been revoked")
+
+func CheckAuth(auth *Auth, conn redis.Conn) (bool, error) {
+	version, err := AuthVersion(conn)
 	if err != nil {
-		return "", err
+		return false, err
 	}
-	return cookie.Value, nil
+	if version != auth.Version {
+		return false, AuthVersionError
+	}
+	return true, nil
 }
 
-func authForRequest(request *Request) (*AuthClaims, error) {
-	token, err := jwtRequest.ParseFromRequest(
-		request,
-		&CookieExtractor{"srAuth"},
-		getJWTSecretKey,
-		jwtRequest.WithClaims(&AuthClaims{}),
-	)
-	if err != nil {
-		return nil, err
-	}
-	auth, ok := token.Claims.(*AuthClaims)
-	if !ok || !token.Valid {
-		return nil, jwt.ErrInvalidKeyType
-	}
-	return auth, nil
+func IncrAuthVersion(conn redis.Conn) (int, error) {
+	return redis.Int(conn.Do("incr", "auth_version"))
 }

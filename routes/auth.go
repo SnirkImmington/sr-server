@@ -3,8 +3,6 @@ package routes
 import (
 	"errors"
 	"fmt"
-	"github.com/dgrijalva/jwt-go"
-	jwtRequest "github.com/dgrijalva/jwt-go/request"
 	"github.com/gomodule/redigo/redis"
 	"sr"
 	"sr/config"
@@ -14,14 +12,13 @@ import (
 var authRouter = router.PathPrefix("/auth").Subrouter()
 
 type loginResponse struct {
-	playerID      string      `json:"playerID"`
-	game          sr.GameInfo `json:"game"`
-	newestEventID string      `json:"newestEventID"`
-	token         string      `json:"authToken"`
-	sessionToken  string      `json:"sessionToken"`
+	playerID     string      `json:"playerID"`
+	gameInfo     sr.GameInfo `json:"game"`
+	authToken    string      `json:"authToken"`
+	sessionToken string      `json:"sessionToken"`
 }
 
-// POST /auth/login { gameID, playerID, playerName }
+// POST /auth/login { gameID, playerName } -> auth token, session token
 var _ = gameRouter.HandleFunc("/login", login).Methods("POST")
 
 func login(response Response, request *Request) {
@@ -35,6 +32,7 @@ func login(response Response, request *Request) {
 		return
 	}
 	playerName := loginRequest.playerName
+	gameID := loginRequest.gameID
 
 	conn := sr.RedisPool.Get()
 	defer sr.CloseRedis(conn)
@@ -46,21 +44,13 @@ func login(response Response, request *Request) {
 	}
 
 	// Create player
-	auth := sr.AddPlayerToGame(loginRequest.playerName, conn)
+	auth, session := sr.AuthenticatePlayer(playerName)
+	eventID := sr.AddNewPlayerToGame(auth.PlayerID, playerName, gameID, conn)
+	logf(request, "%v (%v) has joined %v", playerID, playerName, gameID)
 
-	// Post event
-	event := sr.PlayerJoinEvent{
-		EventCore:  sr.EventCore{Type: "playerJoin"},
-		PlayerID:   auth.playerID,
-		PlayerName: auth.PlayerName,
-	}
-	newestEventID, err := sr.PostEvent(join.GameID, event, conn)
 	if err != nil && httpInternalError(response, request, err) {
 		return
 	}
-	logf(request, "%v (%v) has joined %v",
-		playerID, loginRequest.playerName, loginRequest.gameID,
-	)
 
 	// Create session and auth
 	session, err := sr.MakeSession(playerID, gameID, playerName, conn)
@@ -77,11 +67,11 @@ func login(response Response, request *Request) {
 		return
 	}
 
+	// Response
 	loggedIn := loginResponse{
 		playerID:     playerID,
-		game:         gameInfo,
-		lastEventID:  newestEventID,
-		authToken:    token,
+		gameInfo:     gameInfo,
+		authToken:    authToken,
 		sessionToken: sessionToken,
 	}
 	err = writeBodyJSON(response, loggedIn)
@@ -95,6 +85,7 @@ type reauthResponse struct {
 	sessionToken string `json:"sessionToken"`
 }
 
+// POST auth/reauth { authToken } -> session token
 var _ = authRouter.HandleFunc("/reauth", reauth).Methods("POST")
 
 func reauth(response Response, request *Request) {
@@ -108,121 +99,40 @@ func reauth(response Response, request *Request) {
 	}
 
 	// Check the auth
-	auth, err := sr.AuthFromToken(authRequest.token)
-	if err != nil && httpInvalidRequest(response, request, err) {
+	auth, err := authFromToken(authRequest.token)
+	if err != nil && httpInvalidRequest(response, request, "Invalid auth") {
 		return
 	}
 
-}
+	conn := sr.RedisPool.Get()
+	defer sr.CloseRedis(conn)
 
-type AuthToken struct {
-	GameID     string `json:"sr.gid"`
-	PlayerID   string `json:"sr.pid"`
-	PlayerName string `json:"sr.pname"`
-	jwt.StandardClaims
-}
-
-func (auth *AuthToken) String() string {
-	return fmt.Sprintf("%v (%v) in %v",
-		auth.PlayerID, auth.PlayerName, auth.GameID,
-	)
-}
-
-func createAuthToken(request *loginRequest) (string, error) {
-	expireTime := time.Now()
-	claims := AuthToken{
-		GameID:         request.gameID,
-		PlayerID:       request.playerID,
-		PlayerName:     request.playerName,
-		StandardClaims: jwt.StandardClaims{},
-	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString(config.JWTSecretKey)
-}
-
-func createSessionToken(session *Session, conn *redis.Redis) (string, error) {
-	version, err := sr.SessionVersion(conn)
-	if err != nil {
-		return nil, err
-	}
-	expireTime := time.Now()
-	claims := SessionToken{
-		Version: version,
-		StandardClaims: jwt.StandardClaims{
-			ID:        session.ID,
-			ExpiresAt: expireTime,
-		},
-	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString(config.JWTSecretKey)
-}
-
-var ErrNoAuthHeader = errors.New("No Authentication header")
-var ErrInvalidAuthHeader = errors.New("Invalid Authentication header")
-
-type tokenExtractor struct{}
-
-func (t *tokenExtractor) ExtractToken(request *Request) (string, error) {
-	auth := request.Header.Get("Authentication")
-	if auth == "" {
-		return "", ErrNoAuthHeader
-	}
-	if !strings.HasPrefix(auth, "Bearer ") {
-		return "", ErrInvalidAuthHeader
+	authValid, err := sr.CheckAuth(auth, conn)
+	if !authValid {
+		if errors.Is(err, sr.AuthVersionError) {
+			httpUnauthorized(response, request, err)
+		} else {
+			httpInternalError(response, request, err)
+		}
+		return
 	}
 
-	logf(request, "Have header %v, got auth %v", auth, auth[8:])
-
-	return auth[8:], nil
-}
-
-func requestAuthToken(request *Request) (*AuthToken, error) {
-	token, err := jwtRequest.ParseFromRequest(
-		request,
-		&tokenExtractor{},
-		sr.GetJWTSecretKey,
-		jwtRequest.WithClaims(&AuthToken{}),
-	)
-	if err != nil {
-		return nil, err
+	// Make the session
+	session, err := sr.MakeSession(auth.playerID, auth.gameID, auth.playerName, conn)
+	if err != nil && httpInternalError(response, request, err) {
+		return
 	}
-	auth, ok := token.Claims.(*AuthToken)
-	if !ok || !token.Valid {
-		return nil, jwt.ErrInvalidKeyType
-	}
-	return auth, nil
-}
-
-func requestSessionID(request *Request) (string, error) {
-	auth := request.Header.Get("Authentication")
-	if auth == "" {
-		return "", ErrNoAuthHeader
-	}
-	if !strings.HasPrefix(auth, "Bearer ") {
-		return "", ErrInvalidAuthHeader
+	sessionToken, err := makeSessionToken(session)
+	if err != nil && httpInternalError(response, request, err) {
+		return
 	}
 
-	logf(request, "Have header %v, got auth %v", auth, auth[8:])
-
-	return auth[8:], nil
-}
-
-func requestSession(request *Request, redis *redis.Redis) (*Session, error) {
-	sessionID, err := requestSessionID(request)
-	if err != nil {
-		return nil, err
+	reauthedResponse := reauthResponse{
+		sessionToken: sessionToken,
 	}
-
-	var session *Session
-	result, err := redis.Do("HGET", "session:"+sessionID)
-	if err != nil {
-		return nil, err
+	err = writeBodyJSON(response, reauthedResponse)
+	if err != nil && httpInternalError(response, request, err) {
+		return
 	}
-	err = redis.ScanStruct(result, session)
-	if err != nil {
-		logf(request, "Error paring struct: %v", err)
-		return nil, err
-	}
-
-	return session, nil
+	httpSuccess(response, request, "reauth ", auth.playerName, " to ", auth.gameID)
 }
