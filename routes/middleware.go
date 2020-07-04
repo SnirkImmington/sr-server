@@ -51,10 +51,14 @@ func recoveryMiddleware(wrapped http.Handler) http.Handler {
 	return http.HandlerFunc(func(response Response, request *Request) {
 		defer func() {
 			if err := recover(); err != nil {
+				if err == abortedRequestPanicMessage {
+					logf(request, "aborted request")
+					return
+				}
 				message := fmt.Sprintf("Panic serving %s %s to %s", request.Method, request.RequestURI, request.Host)
 				log.Println(message)
+				log.Println(err)
 				log.Println(string(debug.Stack()))
-				//httpInternalError(response, request, err)
 				http.Error(response, "Internal Server Error", http.StatusInternalServerError)
 			}
 		}()
