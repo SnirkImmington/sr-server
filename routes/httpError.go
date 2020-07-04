@@ -2,9 +2,10 @@ package routes
 
 import (
 	"net/http"
+	"sr"
 )
 
-var abortedRequestPanicMessage string
+var abortedRequestPanicMessage = string(sr.GenUID())
 
 func abortRequest() {
 	panic(abortedRequestPanicMessage)
@@ -24,6 +25,23 @@ func httpBadRequest(response Response, request *Request, message string) {
 	}
 	logf(request, "-> 400 %s", message)
 	http.Error(response, message, http.StatusBadRequest)
+	abortRequest()
+}
+
+func httpForbiddenIf(response Response, request *Request, err error) {
+	if err != nil {
+		logf(request, "-> 403 Forbidden: %v", err)
+		http.Error(response, "Forbidden", http.StatusForbidden)
+		abortRequest()
+	}
+}
+
+func httpForbidden(response Response, request *Request, message string) {
+	if message == "" {
+		message = "Forbidden"
+	}
+	logf(request, "-> 403 %s", message)
+	http.Error(response, message, http.StatusForbidden)
 	abortRequest()
 }
 
