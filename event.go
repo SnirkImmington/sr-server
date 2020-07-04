@@ -1,4 +1,4 @@
-package srserver
+package sr
 
 import (
 	"encoding/json"
@@ -23,6 +23,7 @@ type RollEvent struct {
 	Title      string `json:"title",redis:"title"`
 }
 
+// EdgeRollEvent is posted when a player pushes the limit to roll dice.
 type EdgeRollEvent struct {
 	EventCore
 	PlayerID   string  `json:"pID"`
@@ -39,10 +40,10 @@ type PlayerJoinEvent struct {
 }
 
 // Event interface determines what is sent to postEvent
-type Event interface {
-}
+type Event interface{}
 
-func postEvent(gameID string, event Event, conn redis.Conn) (string, error) {
+// PostEvent posts an event to Redis and returns the generated ID.
+func PostEvent(gameID string, event Event, conn redis.Conn) (string, error) {
 	bytes, err := json.Marshal(event)
 	if err != nil {
 		return "", err
@@ -56,12 +57,11 @@ func postEvent(gameID string, event Event, conn redis.Conn) (string, error) {
 
 var idRegex = regexp.MustCompile(`^([\d]{13})-([\d]+)$`)
 
-func validEventID(id string) bool {
+func ValidEventID(id string) bool {
 	return idRegex.MatchString(id)
 }
 
-func receiveEvents(gameID string) (<-chan string, chan<- bool) {
-	// Due to an implicit cast going on, I can't just use return vars here.
+func ReceiveEvents(gameID string) (<-chan string, chan<- bool) {
 	// Events channel is buffered: if there are too many events for our consumer,
 	// we will block on the channel push, and we backpressure redis to hold onto
 	// events for us.
@@ -72,8 +72,8 @@ func receiveEvents(gameID string) (<-chan string, chan<- bool) {
 
 		defer close(eventsChan)
 
-		conn := redisPool.Get()
-		defer closeRedis(conn)
+		conn := RedisPool.Get()
+		defer CloseRedis(conn)
 		log.Print(goID, " Begin reading events for ", gameID)
 
 		for {
@@ -97,7 +97,7 @@ func receiveEvents(gameID string) (<-chan string, chan<- bool) {
 			eventKeyInfo := data[0].([]interface{})
 			eventList := eventKeyInfo[1].([]interface{})
 
-			events, err := scanEvents(eventList)
+			events, err := ScanEvents(eventList)
 			if err != nil {
 				log.Print(goID, " Unable to deserialize event: ", err)
 				return
@@ -115,7 +115,7 @@ func receiveEvents(gameID string) (<-chan string, chan<- bool) {
 	return eventsChan, okChan
 }
 
-func scanEvents(eventsData []interface{}) ([]map[string]interface{}, error) {
+func ScanEvents(eventsData []interface{}) ([]map[string]interface{}, error) {
 	events := make([]map[string]interface{}, len(eventsData))
 
 	for i := 0; i < len(eventsData); i++ {
