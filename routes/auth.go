@@ -5,13 +5,14 @@ import (
 	"sr"
 )
 
-var authRouter = router.PathPrefix("/auth").Subrouter()
+var authRouter = restRouter.PathPrefix("/auth").Subrouter()
 
 type loginResponse struct {
 	playerID     string      `json:"playerID"`
 	gameInfo     sr.GameInfo `json:"game"`
 	authToken    string      `json:"authToken"`
 	sessionToken string      `json:"sessionToken"`
+	lastEvent    string      `json:"eventID"`
 }
 
 // POST /auth/login { gameID, playerName } -> auth token, session token
@@ -40,12 +41,10 @@ func handleLogin(response Response, request *Request) {
 	}
 
 	// Create player
-	auth, session, err := sr.CreateAuthedPlayer(playerName, gameID)
+	auth, session, err := sr.CreateAuthedPlayer(gameID, playerName, conn)
 	httpInternalErrorIf(response, request, err)
 
-	eventID, err := sr.AddNewPlayerToKnownGame(
-		auth.PlayerID, playerName, gameID, conn,
-	)
+	eventID, err := sr.AddNewPlayerToKnownGame(&auth, conn)
 	httpInternalErrorIf(response, request, err)
 
 	logf(request, "Granted %s", auth)
@@ -55,17 +54,18 @@ func handleLogin(response Response, request *Request) {
 	httpInternalErrorIf(response, request, err)
 
 	// Create response
-	sessionToken, err := makeSessionToken(session)
+	sessionToken, err := makeSessionToken(&session)
 	httpInternalErrorIf(response, request, err)
-	authToken, err := makeAuthToken(auth)
+	authToken, err := makeAuthToken(&auth)
 	httpInternalErrorIf(response, request, err)
 
 	// Response
 	loggedIn := loginResponse{
-		playerID:     auth.PlayerID,
+		playerID:     string(auth.PlayerID),
 		gameInfo:     gameInfo,
 		authToken:    authToken,
 		sessionToken: sessionToken,
+		lastEvent:    eventID,
 	}
 	err = writeBodyJSON(response, loggedIn)
 	httpInternalErrorIf(response, request, err)
@@ -79,9 +79,9 @@ type reauthResponse struct {
 }
 
 // POST auth/reauth { authToken } -> session token
-var _ = authRouter.HandleFunc("/reauth", reauth).Methods("POST")
+var _ = authRouter.HandleFunc("/reauth", handleReauth).Methods("POST")
 
-func reauth(response Response, request *Request) {
+func handleReauth(response Response, request *Request) {
 	logRequest(request)
 	var authRequest struct {
 		token string `json:"token"`
@@ -90,7 +90,7 @@ func reauth(response Response, request *Request) {
 	httpInternalErrorIf(response, request, err)
 
 	// Check the auth
-	auth, err := authFromToken(authRequest.token)
+	auth, err := parseAuthToken(authRequest.token)
 	httpBadRequestIf(response, request, err)
 
 	conn := sr.RedisPool.Get()
@@ -106,9 +106,9 @@ func reauth(response Response, request *Request) {
 	}
 
 	// Make the session
-	session, err := sr.MakeSession(auth.PlayerID, auth.GameID, auth.PlayerName, conn)
+	session, err := sr.MakeSession(auth.GameID, auth.PlayerName, auth.PlayerID, conn)
 	httpInternalErrorIf(response, request, err)
-	sessionToken, err := makeSessionToken(session)
+	sessionToken, err := makeSessionToken(&session)
 	httpInternalErrorIf(response, request, err)
 
 	reauthedResponse := reauthResponse{
@@ -119,4 +119,29 @@ func reauth(response Response, request *Request) {
 	httpSuccess(response, request,
 		"reauth ", auth.PlayerName, " to ", auth.GameID,
 	)
+}
+
+// POST auth/logout { session } -> OK
+
+var _ = authRouter.HandleFunc("/logout", handleLogout).Methods("POST")
+
+func handleLogout(response Response, request *Request) {
+	logRequest(request)
+	sess, conn, err := requestSession(request)
+	httpUnauthorizedIf(response, request, err)
+	defer conn.Close()
+
+	// Remove the session by ID.
+	// Note that because of JWT we trust the session existed at some point.
+	// Also note how we checked redis for it just now.
+	ok, err := sr.RemoveSession(&sess, conn)
+	httpInternalErrorIf(response, request, err)
+
+	if !ok {
+		logf(request, "Exceptional state! Did not delete %v", sess)
+	}
+
+	logf(request, "Logged out %v", sess)
+
+	httpSuccess(response, request, "logged out")
 }

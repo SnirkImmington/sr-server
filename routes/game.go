@@ -9,9 +9,9 @@ import (
 	"time"
 )
 
-var gameRouter = router.PathPrefix("/game").Subrouter()
+var gameRouter = restRouter.PathPrefix("/game").Subrouter()
 
-var _ = router.HandleFunc("/info", handleInfo).Methods("GET")
+var _ = gameRouter.HandleFunc("/info", handleInfo).Methods("GET")
 
 // GET /info {gameInfo}
 func handleInfo(response Response, request *Request) {
@@ -61,7 +61,7 @@ func handleRoll(response Response, request *Request) {
 		)
 		event = sr.EdgeRollEvent{
 			EventCore:  sr.EventCore{Type: "edgeRoll"},
-			PlayerID:   sess.PlayerID,
+			PlayerID:   string(sess.PlayerID),
 			PlayerName: sess.PlayerName,
 			Title:      roll.Title,
 			Rounds:     rolls,
@@ -75,7 +75,7 @@ func handleRoll(response Response, request *Request) {
 		)
 		event = sr.RollEvent{
 			EventCore:  sr.EventCore{Type: "roll"},
-			PlayerID:   sess.PlayerID,
+			PlayerID:   string(sess.PlayerID),
 			PlayerName: sess.PlayerName,
 			Roll:       rolls,
 			Title:      roll.Title,
@@ -95,10 +95,10 @@ func handleRoll(response Response, request *Request) {
 // as it'd come back escaped.
 var eventParseRegex = regexp.MustCompile(`"ty":"([^"]+)"`)
 
-var _ = gameRouter.HandleFunc("/events", handleEvents).Methods("GET")
+var _ = gameRouter.HandleFunc("/subscription", handleSubscription).Methods("GET")
 
-// $ GET /events
-func handleEvents(response Response, request *Request) {
+// GET /subscription -> SSE :ping, event
+func handleSubscription(response Response, request *Request) {
 	logRequest(request)
 	sess, conn, err := requestSession(request)
 	httpUnauthorizedIf(response, request, err)
@@ -124,7 +124,7 @@ func handleEvents(response Response, request *Request) {
 	for {
 		if !stream.IsOpen() {
 			logf(request, "Session %s disconnected", sess.LogInfo())
-			ok, err := sr.UnexpireSession(sess, conn)
+			ok, err := sr.UnexpireSession(&sess, conn)
 			if err != nil {
 				logf(request,
 					"Error unexpiring session %s: %v",
@@ -170,7 +170,7 @@ type eventRangeResponse struct {
 	More   bool                     `json:"more"`
 }
 
-var _ = gameRouter.HandleFunc("/event-range", handleEventRange).Methods("GET")
+var _ = gameRouter.HandleFunc("/events", handleEvents).Methods("GET")
 
 /*
    on join: { start: '', end: <lastEventID> }, backfill buffer
@@ -178,7 +178,7 @@ var _ = gameRouter.HandleFunc("/event-range", handleEventRange).Methods("GET")
   if there's < max responses, client knows it's hit the boundary.
 */
 // GET /event-range { start: <id>, end: <id>, max: int }
-func handleEventRange(response Response, request *Request) {
+func handleEvents(response Response, request *Request) {
 	logRequest(request)
 	sess, conn, err := requestSession(request)
 	httpUnauthorizedIf(response, request, err)
@@ -230,7 +230,7 @@ func handleEventRange(response Response, request *Request) {
 		events, err := sr.ScanEvents(eventsData)
 		if err != nil {
 			logf(request, "Unable to parse events: %v", err)
-			httpInternalError(response, request, err)
+			httpInternalErrorIf(response, request, err)
 			return
 		}
 
