@@ -1,10 +1,7 @@
 package routes
 
 import (
-	//"encoding/json"
-	"errors"
 	"github.com/gomodule/redigo/redis"
-	"net/http"
 	"regexp"
 	"sr"
 	"sr/config"
@@ -13,135 +10,30 @@ import (
 
 var gameRouter = router.PathPrefix("/game").Subrouter()
 
-type gameJoinRequest struct {
-	GameID     string `json:"gameID"`
-	PlayerName string `json:"playerName"`
-}
+var _ = router.HandleFunc("/info", handleInfo).Methods("GET")
 
-type joinGameResponse struct {
-	PlayerID      string            `json:"playerID"`
-	Players       map[string]string `json:"players"`
-	NewestEventID string            `json:"newestID"`
-}
-
-var errGameNotFound error = errors.New("game not found")
-
-// * POST /join-game { gameId, playerId } => { token, playerID }
-var _ = gameRouter.HandleFunc("/join", joinGame).Methods("GET")
-
-func joinGame(response Response, request *Request) {
+// GET /info {gameInfo}
+func handleInfo(response Response, request *Request) {
 	logRequest(request)
-	var join gameJoinRequest
-	err := readBodyJSON(request, &join)
-	if err != nil {
-		httpInvalidRequest(response, request, "Invalid request")
+	sess, conn, err := requestSession(request)
+	if err != nil && httpUnauthorized(response, request, err) {
 		return
 	}
-
-	conn := sr.RedisPool.Get()
 	defer sr.CloseRedis(conn)
 
-	// Unauthorized
-	gameExists, err := redis.Bool(conn.Do("exists", "game:"+join.GameID))
-	if err != nil {
-		httpInternalError(response, request, err)
-		return
-	}
-	if !gameExists {
-		httpUnauthorized(response, request, errGameNotFound)
+	info, err := sr.GetGameInfo(sess.GameID, conn)
+	if err != nil && httpInternalError(response, request, err) {
 		return
 	}
 
-	playerID := sr.GenUID()
-
-	// Get all the players then set
-	err = conn.Send("hmset", "player:"+join.GameID, playerID, join.PlayerName)
-	if err != nil {
-		httpInternalError(response, request, err)
+	err = writeBodyJSON(response, &info)
+	if err != nil && httpInternalError(response, request, err) {
 		return
 	}
-	err = conn.Send("hgetall", "player:"+join.GameID)
-	if err != nil {
-		httpInternalError(response, request, err)
-		return
-	}
-	err = conn.Flush()
-	if err != nil {
-		httpInternalError(response, request, err)
-		return
-	}
-	_, err = conn.Receive()
-	if err != nil {
-		httpInternalError(response, request, err)
-		return
-	}
-	players, err := redis.StringMap(conn.Receive())
-	if err != nil {
-		httpInternalError(response, request, err)
-		return
-	}
-	players[playerID] = join.PlayerName
-
-	event := PlayerJoinEvent{
-		EventCore:  EventCore{Type: "playerJoin"},
-		PlayerID:   playerID,
-		PlayerName: join.PlayerName,
-	}
-	newestEventID, err := postEvent(join.GameID, event, conn)
-	if err != nil {
-		httpInternalError(response, request, err)
-		return
-	}
-
-	logf(request, "%v (%v) has joined %v",
-		playerID, join.PlayerName, join.GameID,
+	httpSuccess(
+		response, request,
+		info.GameID, ": ", len(info.players), " players",
 	)
-
-	// Create JWT
-	cookie, err := sr.createAuthCookie(join.GameID, playerID, join.PlayerName)
-	if err != nil {
-		httpInternalError(response, request, err)
-		return
-	}
-	http.SetCookie(response, cookie)
-
-	joined := joinGameResponse{
-		PlayerID:      playerID,
-		Players:       players,
-		NewestEventID: newestEventID,
-	}
-	err = writeBodyJSON(response, joined)
-	if err != nil {
-		httpInternalError(response, request, err)
-		return
-	}
-	httpSuccess(response, request, "join ", join.GameID)
-}
-
-// $ GET /players => { <id>: <name> }
-func handleGetPlayers(response Response, request *Request) {
-	logRequest(request)
-	auth, err := sr.authForRequest(request)
-	if err != nil {
-		httpUnauthorized(response, request, err)
-		return
-	}
-
-	conn := sr.RedisPool.Get()
-	defer sr.CloseRedis(conn)
-
-	players, err := redis.StringMap(conn.Do("hgetall", "player:"+auth.GameID))
-	if err != nil {
-		httpInternalError(response, request, err)
-		return
-	}
-
-	err = writeBodyJSON(response, players)
-	if err != nil {
-		httpInternalError(response, request, err)
-		return
-	}
-	httpSuccess(response, request, len(players), " players")
 }
 
 type rollRequest struct {
@@ -153,11 +45,11 @@ type rollRequest struct {
 // $ POST /roll count
 func handleRoll(response Response, request *Request) {
 	logRequest(request)
-	auth, err := sr.authForRequest(request)
-	if err != nil {
-		httpUnauthorized(response, request, err)
+	sess, conn, err := requestSession(request)
+	if err != nil && httpUnauthorized(request, response, err) {
 		return
 	}
+	defer sr.CloseRedis(conn)
 
 	var roll rollRequest
 	err = readBodyJSON(request, &roll)
@@ -171,17 +63,14 @@ func handleRoll(response Response, request *Request) {
 		return
 	}
 
-	conn := sr.RedisPool.Get()
-	defer sr.CloseRedis(conn)
-
 	var event Event
 	// Note that roll generation is possibly blocking
 	if roll.Edge {
 		rolls := sr.ExplodingSixes(roll.Count)
 		logf(request, "%v: edge roll: %v",
-			auth, rolls,
+			sess.LogInfo(), rolls,
 		)
-		event = EdgeRollEvent{
+		event = sr.EdgeRollEvent{
 			EventCore:  EventCore{Type: "edgeRoll"},
 			PlayerID:   auth.PlayerID,
 			PlayerName: auth.PlayerName,
@@ -193,7 +82,7 @@ func handleRoll(response Response, request *Request) {
 		rolls := make([]int, roll.Count)
 		hits := sr.FillRolls(rolls)
 		logf(request, "%v: roll: %v (%v hits)",
-			auth, rolls, hits,
+			sess.LogInfo(), rolls, hits,
 		)
 		event = RollEvent{
 			EventCore:  EventCore{Type: "roll"},
@@ -204,12 +93,14 @@ func handleRoll(response Response, request *Request) {
 		}
 	}
 
-	id, err := sr.PostEvent(auth.GameID, event, conn)
-	if err != nil {
-		httpInternalError(response, request, err)
+	id, err := sr.PostEvent(sess.GameID, event, conn)
+	if err != nil && httpInternalError(response, request, err) {
 		return
 	}
-	httpSuccess(response, request, "roll ", id, " posted")
+	httpSuccess(
+		response, request,
+		"roll ", id, " posted",
+	)
 }
 
 // Hacky workaround for logs to show event type.
@@ -217,14 +108,16 @@ func handleRoll(response Response, request *Request) {
 // as it'd come back escaped.
 var eventParseRegex = regexp.MustCompile(`"ty":"([^"]+)"`)
 
+var _ = gameRouter.HandleFunc("/events", handleEvents).Methods("GET")
+
 // $ GET /events
 func handleEvents(response Response, request *Request) {
 	logRequest(request)
-	auth, err := sr.AuthForRequest(request)
-	if err != nil {
-		httpUnauthorized(response, request, err)
+	sess, conn, err := requestSession(request)
+	if err != nil && httpUnauthorized(response, request, err) {
 		return
 	}
+	defer sr.CloseRedis(conn)
 
 	// Upgrade to SSE stream
 	stream, err := sseUpgrader.Upgrade(response, request)
@@ -232,30 +125,33 @@ func handleEvents(response Response, request *Request) {
 		httpInternalError(response, request, err)
 		return
 	}
-
 	err = stream.WriteEvent("ping", []byte("hi"))
 	if err != nil {
-		logf(request, " Could not say hello: %v", err)
+		logf(request, "Could not say hello: %v", err)
 		return
 	}
 
 	// Subscribe to redis
-	conn := sr.RedisPool.Get()
-	defer sr.CloseRedis(conn)
-
 	logf(request, "Retrieving events in %v for %v...",
 		auth.GameID, auth.PlayerID,
 	)
 
-	events, cancelled := sr.receiveEvents(auth.GameID)
+	events, cancelled := sr.ReceiveEvents(auth.GameID)
 	defer func() { cancelled <- true }()
 
 	selectInterval := time.Duration(config.SSEPingSecs) * time.Second
 	for {
 		if !stream.IsOpen() {
-			logf(request, "%v (%v) disconnected from %v",
-				auth.PlayerID, auth.PlayerName, auth.GameID,
-			)
+			logf(request, "Session %s disconnected", sess)
+			ok, err := sr.UnexpireSession(sess, conn)
+			if err != nil {
+				logf(request,
+					"Error unexpiring session %s: %v",
+					sess, err,
+				)
+			} else if !ok {
+				logf(request, "Redis did not expire session %s", sess)
+			}
 			return
 		}
 
@@ -281,15 +177,9 @@ func handleEvents(response Response, request *Request) {
 			if err != nil {
 				logf(request, "Unable to ping stream: %v", err)
 				stream.Close()
-				return
 			}
 		}
 	}
-}
-
-type eventRangeRequest struct {
-	Newest string `json:"newest"`
-	Oldest string `json:"oldest"`
 }
 
 type eventRangeResponse struct {
@@ -297,6 +187,8 @@ type eventRangeResponse struct {
 	LastID string                   `json:"lastId"`
 	More   bool                     `json:"more"`
 }
+
+var _ = gameRouter.HandleFunc("/event-range", handleEventRange).Methods("GET")
 
 /*
    on join: { start: '', end: <lastEventID> }, backfill buffer
@@ -306,43 +198,37 @@ type eventRangeResponse struct {
 // GET /event-range { start: <id>, end: <id>, max: int }
 func handleEventRange(response Response, request *Request) {
 	logRequest(request)
-	auth, err := sr.AuthForRequest(request)
-	if err != nil {
-		httpUnauthorized(response, request, err)
+	sess, conn, err := requestSession(request)
+	if err != nil && httpUnauthorized(response, request, err) {
 		return
 	}
+	defer sr.CloseRedis(conn)
 
-	conn := redisPool.Get()
-	defer closeRedis(conn)
-
-	var eventsRange eventRangeRequest
-	err = readBodyJSON(request, &eventsRange)
-	if err != nil {
-		httpInvalidRequest(response, request, "Invalid request")
-		return
-	}
+	newest := request.FormValue("newest")
+	oldest := request.FormValue("oldest")
 
 	// We want to be careful here because these IDs are user input!
 	//
 
-	if eventsRange.Newest == "" {
-		eventsRange.Newest = "-"
-	} else if !validEventID(eventsRange.Newest) {
+	if newest == "" {
+		newest = "-"
+	} else if !validEventID(newest) {
 		httpInvalidRequest(response, request, "Invalid newest ID")
 		return
 	}
 
-	if eventsRange.Oldest == "" {
-		eventsRange.Oldest = "+"
-	} else if !validEventID(eventsRange.Oldest) {
+	if oldest == "" {
+		oldest = "+"
+	} else if !validEventID(oldest) {
 		httpInvalidRequest(response, request, "Invalid oldest ID")
 		return
 	}
 
-	logf(request, "Retrieve events %v for %v (%v) in %v",
-		eventsRange, auth.PlayerID, auth.PlayerName, auth.GameID,
+	logf(request, "Retrieve events {%s : %s} for %s",
+		oldest, newest, sess.LogInfo(),
 	)
 
+	// TODO move to events.go
 	eventsData, err := redis.Values(conn.Do(
 		"XREVRANGE", "event:"+auth.GameID,
 		eventsRange.Oldest, eventsRange.Newest,
@@ -354,39 +240,41 @@ func handleEventRange(response Response, request *Request) {
 		return
 	}
 
+	var eventRange eventRangeResponse
+	var message string
+
 	if len(eventsData) == 0 {
-		eventRange := eventRangeResponse{
+		eventRange = eventRangeResponse{
 			Events: make([]map[string]interface{}, 0),
 			LastID: "",
 			More:   false,
 		}
-		err = writeBodyJSON(response, eventRange)
+		message = "0 events"
+	} else {
+		events, err := scanEvents(eventsData)
 		if err != nil {
+			logf(request, "Unable to parse events: %v", err)
 			httpInternalError(response, request, err)
 			return
 		}
-		httpSuccess(response, request, "0 events")
-		return
+
+		firstID := events[0]["id"].(string)
+		lastID := events[len(events)-1]["id"].(string)
+
+		eventRange = eventRangeResponse{
+			Events: events,
+			More:   len(events) == config.MaxEventRange,
+		}
+		message = fmt.Sprintf(
+			"%s : %s ; %v events",
+			firstID, lastID, len(events),
+		)
 	}
 
-	events, err := scanEvents(eventsData)
-	if err != nil {
-		logf(request, "Unable to parse events: %v", err)
-		httpInternalError(response, request, err)
-		return
-	}
-
-	firstID := events[0]["id"].(string)
-	lastID := events[len(events)-1]["id"].(string)
-
-	eventRange := eventRangeResponse{
-		Events: events,
-		More:   len(events) == config.MaxEventRange,
-	}
 	err = writeBodyJSON(response, eventRange)
 	if err != nil {
 		httpInternalError(response, request, err)
 		return
 	}
-	httpSuccess(response, request, firstID, " ... ", lastID, "; ", len(events), " events")
+	httpSuccess(response, request, message)
 }
