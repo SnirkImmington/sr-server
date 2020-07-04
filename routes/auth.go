@@ -78,7 +78,7 @@ func login(response Response, request *Request) {
 	if err != nil && httpInternalError(response, request, err) {
 		return
 	}
-	httpSuccess(response, request)
+	httpSuccess(response, request, playerID, " joined ", gameID)
 }
 
 type reauthResponse struct {
