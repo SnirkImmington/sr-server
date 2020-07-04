@@ -20,7 +20,7 @@ func (sess *SessionToken) String() string {
 	return fmt.Sprintf("%s", sess.sessionID)
 }
 
-func createSessionToken(session *sr.Session) (string, error) {
+func makeSessionToken(session *sr.Session) (string, error) {
 	token := jwt.NewWithClaims(
 		jwt.SigningMethodHS256,
 		SessionToken{sessionID: string(session.ID)},
@@ -30,7 +30,7 @@ func createSessionToken(session *sr.Session) (string, error) {
 
 // requestSession retrieves the authenticated session for the request.
 // It does not open redis if an invalid session is supplied.
-func requestSession(request *Request) (*Session, redis.Conn, error) {
+func requestSession(request *Request) (*sr.Session, redis.Conn, error) {
 	token, err := requestSessionToken(request)
 	if err != nil {
 		return nil, err

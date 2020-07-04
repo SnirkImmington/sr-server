@@ -21,7 +21,7 @@ import (
 type Session struct {
 	ID       UID    `redis:"-"`
 	GameID   string `redis:"gameID"`
-	PlayerID string `redis:"playerID"`
+	PlayerID UID    `redis:"playerID"`
 
 	PlayerName string `redis:"playerName"`
 }
@@ -45,7 +45,7 @@ func (s Session) redisKey() string {
 }
 
 // MakeSession adds a session for the given player in the given game
-func MakeSession(gameID, playerID, playerName string, conn redis.Conn) (*Session, error) {
+func MakeSession(gameID string, playerName string, playerID UID, conn redis.Conn) (Session, error) {
 	sessionID := GenUID()
 	session := Session{
 		ID:       sessionID,
@@ -58,10 +58,10 @@ func MakeSession(gameID, playerID, playerName string, conn redis.Conn) (*Session
 	sessionArgs := redis.Args{}.AddFlat(&session)
 	_, err := redis.Int(conn.Do("HMSET", session.redisKey(), sessionArgs))
 	if err != nil {
-		return nil, err
+		return Session{}, err
 	}
 
-	return &session, nil
+	return session, nil
 }
 
 // SessionExists returns whether the session exists in Redis.

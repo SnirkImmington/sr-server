@@ -40,7 +40,7 @@ func handleLogin(response Response, request *Request) {
 	}
 
 	// Create player
-	auth, session, err := sr.AuthenticatePlayer(playerName)
+	auth, session, err := sr.CreateAuthedPlayer(playerName, gameID)
 	httpInternalErrorIf(response, request, err)
 
 	eventID, err := sr.AddNewPlayerToKnownGame(
@@ -57,7 +57,7 @@ func handleLogin(response Response, request *Request) {
 	// Create response
 	sessionToken, err := makeSessionToken(session)
 	httpInternalErrorIf(response, request, err)
-	authToken, err := makeAuthToken(auth, conn)
+	authToken, err := makeAuthToken(auth)
 	httpInternalErrorIf(response, request, err)
 
 	// Response
