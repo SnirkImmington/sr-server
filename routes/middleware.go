@@ -4,18 +4,18 @@ import (
 	"context"
 	"fmt"
 	"github.com/gomodule/redigo/redis"
-	"log"
 	"math/rand"
 	"net/http"
 	"runtime/debug"
 	"sr"
 	"sr/config"
+	"strings"
 	"time"
 )
 
 func headersMiddleware(wrapped http.Handler) http.Handler {
 	return http.HandlerFunc(func(response Response, request *Request) {
-		if config.TlsEnable {
+		if config.TLSEnable {
 			response.Header().Set("Strict-Transport-Security", "max-age=31536000")
 		}
 		response.Header().Set("Cache-Control", "no-cache")
@@ -34,7 +34,11 @@ func withRequestID(ctx context.Context) context.Context {
 }
 
 func requestID(request *Request) string {
-	return request.Context().Value(requestIDKey).(string)
+	val := request.Context().Value(requestIDKey)
+	if val == nil {
+		return "??"
+	}
+	return val.(string)
 }
 
 func requestIDMiddleware(wrapped http.Handler) http.Handler {
@@ -55,11 +59,12 @@ func recoveryMiddleware(wrapped http.Handler) http.Handler {
 					logf(request, "aborted request")
 					return
 				}
-				message := fmt.Sprintf("Panic serving %s %s to %s", request.Method, request.RequestURI, request.Host)
-				log.Println(message)
-				log.Println(err)
-				log.Println(string(debug.Stack()))
+				logf(request, "Panic serving %v %v: %v",
+					request.Method, request.URL, err,
+				)
+				logf(request, string(debug.Stack()))
 				http.Error(response, "Internal Server Error", http.StatusInternalServerError)
+				logf(request, "-> 500 Internal Server Error")
 			}
 		}()
 		wrapped.ServeHTTP(response, request)
@@ -81,39 +86,26 @@ func rateLimitedMiddleware(wrapped http.Handler) http.Handler {
 		current, err := redis.Int(conn.Do("get", rateLimitKey))
 		if err == redis.ErrNil {
 			current = 0
-		} else if err != nil {
-			httpInternalError(response, request, err)
-			return
+		} else {
+			httpInternalErrorIf(response, request, err)
 		}
 
 		limited := false
 		if current > config.MaxRequestsPer10Secs {
-			log.Printf("Rate limit for %v hit", request.RemoteAddr)
+			logf(request, "Rate limit for %v hit", remoteAddr)
 			http.Error(response, "Rate limited", http.StatusTooManyRequests)
 			limited = true
 		}
 
 		err = conn.Send("multi")
-		if err != nil {
-			httpInternalError(response, request, err)
-			return
-		}
+		httpInternalErrorIf(response, request, err)
 		err = conn.Send("incr", rateLimitKey)
-		if err != nil {
-			httpInternalError(response, request, err)
-			return
-		}
+		httpInternalErrorIf(response, request, err)
 		// Always push back expire time: forces client to back off for 10s
 		err = conn.Send("expire", rateLimitKey, "10")
-		if err != nil {
-			httpInternalError(response, request, err)
-			return
-		}
+		httpInternalErrorIf(response, request, err)
 		err = conn.Send("exec")
-		if err != nil {
-			httpInternalError(response, request, err)
-			return
-		}
+		httpInternalErrorIf(response, request, err)
 
 		if !limited {
 			wrapped.ServeHTTP(response, request)
