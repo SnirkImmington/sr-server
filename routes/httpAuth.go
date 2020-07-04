@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"fmt"
 	"github.com/dgrijalva/jwt-go"
 	"sr"
 	"sr/config"
@@ -26,7 +27,7 @@ func makeAuthToken(auth *sr.Auth) (string, error) {
 		jwt.SigningMethodHS256,
 		AuthToken{
 			GameID:   auth.GameID,
-			PlayerID: auth.PlayerID,
+			PlayerID: string(auth.PlayerID),
 			Version:  auth.Version,
 
 			PlayerName: auth.PlayerName,
@@ -35,6 +36,19 @@ func makeAuthToken(auth *sr.Auth) (string, error) {
 	return token.SignedString(config.JWTSecretKey)
 }
 
-func authFromToken(token string) (sr.Auth, error) {
+func parseAuthToken(tokenString string) (sr.Auth, error) {
+	token, err := jwt.ParseWithClaims(tokenString, &AuthToken{}, sr.GetJWTSecretKey)
+	if err != nil {
+		return sr.Auth{}, err
+	}
+	return authFromToken(token.Claims.(*AuthToken)), nil
+}
 
+func authFromToken(token *AuthToken) sr.Auth {
+	return sr.Auth{
+		GameID:     token.GameID,
+		PlayerID:   sr.UID(token.PlayerID),
+		Version:    token.Version,
+		PlayerName: token.PlayerName,
+	}
 }
