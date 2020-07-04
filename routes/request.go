@@ -3,15 +3,22 @@ package routes
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/janberktold/sse"
 	"log"
 	"net/http"
 	"sr/config"
+	"time"
 )
 
-type Request = http.Request
-type Response = http.ResponseWriter
+var sseUpgrader = sse.Upgrader{
+	RetryTime: time.Duration(config.SSEClientRetrySecs) * time.Second,
+}
 
-type HandlerFunc = func(Response, *Request)
+// Request is an alias for http.Request
+type Request = http.Request
+
+// Response is an alias for http.ResponseWriter
+type Response = http.ResponseWriter
 
 func readBodyJSON(request *Request, value interface{}) error {
 	return json.NewDecoder(request.Body).Decode(value)
