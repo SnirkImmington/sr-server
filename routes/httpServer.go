@@ -17,12 +17,16 @@ var restRouter = BaseRouter()
 
 // BaseRouter produces a router which
 func BaseRouter() *mux.Router {
+	log.Print("Creating base router")
 	router := mux.NewRouter()
-	router.Use(requestIDMiddleware)
-	router.Use(recoveryMiddleware)
-	router.Use(rateLimitedMiddleware)
-	router.Use(headersMiddleware)
-	router.NotFoundHandler = http.HandlerFunc(notFoundHandler)
+	router.Use(
+		mux.MiddlewareFunc(requestIDMiddleware),
+		mux.MiddlewareFunc(recoveryMiddleware),
+		mux.MiddlewareFunc(rateLimitedMiddleware),
+		mux.MiddlewareFunc(headersMiddleware),
+	)
+	log.Print("Asked it to use things")
+	//router.NotFoundHandler = http.HandlerFunc(notFoundHandler)
 	return router
 }
 
@@ -36,11 +40,10 @@ func displayRoute(route *mux.Route, handler *mux.Router, parents []*mux.Route) e
 	indentation := strings.Repeat("  ", len(parents))
 	endpoint, err := route.GetPathTemplate()
 	if err != nil {
-		log.Print("Cannot display route!")
-		return err
+		endpoint = "[default]"
 	}
 	methods, err := route.GetMethods()
-	if err != nil {
+	if err != nil { // it's a top level thing
 		fmt.Println(indentation, endpoint)
 	} else {
 		fmt.Println(indentation, endpoint, methods)
@@ -50,7 +53,7 @@ func displayRoute(route *mux.Route, handler *mux.Router, parents []*mux.Route) e
 
 func DisplaySiteRoutes() error {
 	err := restRouter.Walk(displayRoute)
-	fmt.Println()
+	fmt.Println(" [default] [*]\n")
 	return err
 }
 
@@ -106,6 +109,7 @@ func MakeHTTPSiteServer() http.Server {
 		AllowCredentials: true,
 		Debug:            config.CORSDebug,
 	})
+	restRouter.NewRoute().HandlerFunc(notFoundHandler)
 	router := c.Handler(restRouter)
 	server := makeServerFromRouter(router)
 	server.Addr = config.HostAddress
@@ -136,6 +140,7 @@ func MakeHTTPSSiteServer() http.Server {
 		AllowCredentials: true,
 		Debug:            config.CORSDebug,
 	})
+	restRouter.NewRoute().HandlerFunc(notFoundHandler)
 	router := c.Handler(restRouter)
 	server := makeServerFromRouter(router)
 	server.TLSConfig = &tlsConfig

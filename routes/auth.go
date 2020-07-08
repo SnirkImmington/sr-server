@@ -16,7 +16,7 @@ type loginResponse struct {
 }
 
 // POST /auth/login { gameID, playerName } -> auth token, session token
-var _ = gameRouter.HandleFunc("/login", handleLogin).Methods("POST")
+var _ = authRouter.HandleFunc("/login", handleLogin).Methods("POST")
 
 func handleLogin(response Response, request *Request) {
 	logRequest(request)

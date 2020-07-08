@@ -29,7 +29,7 @@ type requestIDKeyType int
 var requestIDKey requestIDKeyType
 
 func withRequestID(ctx context.Context) context.Context {
-	id := fmt.Sprintf("%02x", rand.Intn(257))
+	id := fmt.Sprintf("%02x", rand.Intn(256))
 	return context.WithValue(ctx, requestIDKey, id)
 }
 

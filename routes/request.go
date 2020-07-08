@@ -31,21 +31,27 @@ func writeBodyJSON(response Response, value interface{}) error {
 
 func logRequest(request *Request, values ...string) {
 	if config.IsProduction {
-		logf(request, "<- %v %v %v %v",
+		rawLog(request, fmt.Sprintf(
+			"<- %v %v %v %v",
 			request.RemoteAddr, request.Proto, request.Method, request.URL,
-		)
+		))
 	} else {
-		logf(request, "<- %v %v",
+		rawLog(request, fmt.Sprintf("<- %v %v",
 			request.Method, request.URL,
-		)
+		))
 	}
 }
 
 func logf(request *Request, format string, values ...interface{}) {
+	message := fmt.Sprintf(format, values...)
+	rawLog(request, message)
+}
+
+func rawLog(request *Request, message string) {
 	id := requestID(request)
-	err := log.Output(2, fmt.Sprintf(id+" "+format, values...))
+	err := log.Output(3, id+" "+message)
 	if err != nil {
-		log.Printf(id+" [Output Error] "+format, values...)
+		log.Print(id, " [Output Error] ", message)
 	}
 }
 
@@ -53,5 +59,5 @@ func httpSuccess(response Response, request *Request, message ...interface{}) {
 	if len(message) == 0 {
 		message = []interface{}{"OK"}
 	}
-	logf(request, "-> 200 %v", fmt.Sprint(message...))
+	rawLog(request, fmt.Sprintf("-> 200 %v", fmt.Sprint(message...)))
 }

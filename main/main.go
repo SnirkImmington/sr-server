@@ -21,7 +21,7 @@ const SHADOWROLLER = `
 `
 
 func runServer(name string, server http.Server, tls bool) {
-	log.Print("Running ", name, " server...")
+	log.Print("Running ", name, " server at ", server.Addr, "...")
 
 	for {
 		var err error
@@ -74,7 +74,7 @@ func main() {
 		// Run the local server unlooped in this thread.
 		mainServer := routes.MakeHTTPSiteServer()
 
-		log.Println("Running development site server...")
+		log.Print("Running dev server at ", mainServer.Addr, "...")
 		err := mainServer.ListenAndServe()
 		if err != nil {
 			log.Println("Development server error:", err)

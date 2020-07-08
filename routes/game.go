@@ -9,6 +9,11 @@ import (
 	"time"
 )
 
+var _ = restRouter.HandleFunc("/players", func(response Response, request *Request) {
+	logRequest(request)
+	httpSuccess(response, request)
+})
+
 var gameRouter = restRouter.PathPrefix("/game").Subrouter()
 
 var _ = gameRouter.HandleFunc("/info", handleInfo).Methods("GET")
