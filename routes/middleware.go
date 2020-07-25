@@ -56,7 +56,6 @@ func recoveryMiddleware(wrapped http.Handler) http.Handler {
 		defer func() {
 			if err := recover(); err != nil {
 				if err == abortedRequestPanicMessage {
-					logf(request, "aborted request")
 					return
 				}
 				logf(request, "Panic serving %v %v: %v",
