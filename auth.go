@@ -16,15 +16,21 @@ import (
 // everyone.
 // We trust AuthTokens from clients only because they're signed by us.
 type Auth struct {
-	GameID   string `json:"gameID"`
-	PlayerID UID    `json:"playerID"`
+	GameID   string `json:"gID"`
+	PlayerID UID    `json:"pID"`
 	Version  int    `json:"v"`
 
 	// Player name is tied to auth concept for now.
-	PlayerName string `json:"playerName"`
+	PlayerName string `json:"pName"`
 }
 
 func (auth *Auth) String() string {
+	return fmt.Sprintf("%v (%v) in %v",
+		auth.PlayerID, auth.PlayerName, auth.GameID,
+	)
+}
+
+func (auth *Auth) LogInfo() string {
 	return fmt.Sprintf("%v (%v) in %v",
 		auth.PlayerID, auth.PlayerName, auth.GameID,
 	)
