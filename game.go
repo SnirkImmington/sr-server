@@ -30,7 +30,7 @@ func AddNewPlayerToKnownGame(
 	auth *Auth,
 	conn redis.Conn,
 ) (string, error) {
-	_, err := conn.Do("hmset", "player:"+auth.GameID, auth.PlayerID, auth.PlayerName)
+	_, err := conn.Do("hset", "player:"+auth.GameID, auth.PlayerID, auth.PlayerName)
 	if err != nil {
 		return "", err
 	}
