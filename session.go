@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"github.com/gomodule/redigo/redis"
 	"sr/config"
+    "errors"
+    "log"
 )
 
 // Session represents a temporary Auth of a user's credentials.
@@ -55,12 +57,15 @@ func MakeSession(gameID string, playerName string, playerID UID, conn redis.Conn
 		PlayerName: playerName,
 	}
 
-	sessionArgs := redis.Args{}.AddFlat(&session)
-	_, err := redis.Int(conn.Do("HMSET", session.redisKey(), sessionArgs))
+	sessionArgs := redis.Args{}.Add(session.redisKey()).AddFlat(&session)
+	_, err := redis.String(conn.Do("hmset", sessionArgs...))
 	if err != nil {
 		return Session{}, err
 	}
-
+    _, err = ExpireSession(&session, conn)
+    if err != nil {
+        return Session{}, err
+    }
 	return session, nil
 }
 
@@ -69,14 +74,20 @@ func SessionExists(sessionID string, conn redis.Conn) (bool, error) {
 	return redis.Bool(conn.Do("exists", "session:"+sessionID))
 }
 
+var errNoSessionData = errors.New("Unable to parse session from redis")
+
 // GetSessionByID retrieves a session from redis.
 func GetSessionByID(sessionID string, conn redis.Conn) (Session, error) {
 	var session Session
-	data, err := redis.Values(conn.Do("HGETALL", session.redisKey()))
+	data, err := conn.Do("hgetall", "session:"+sessionID)
 	if err != nil {
+        log.Print("Error getting session")
 		return Session{}, err
 	}
-	err = redis.ScanStruct(data, &session)
+    if data == nil {
+        return Session{}, errors.New("Error")
+    }
+	err = redis.ScanStruct(data.([]interface{}), &session)
 	if err != nil {
 		return Session{}, err
 	}
