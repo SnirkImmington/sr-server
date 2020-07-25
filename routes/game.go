@@ -42,6 +42,8 @@ type rollRequest struct {
 	Edge  bool   `json:"edge"`
 }
 
+var _ = gameRouter.HandleFunc("/roll", handleRoll).Methods("POST")
+
 // $ POST /roll count
 func handleRoll(response Response, request *Request) {
 	logRequest(request)
@@ -105,7 +107,7 @@ var _ = gameRouter.HandleFunc("/subscription", handleSubscription).Methods("GET"
 // GET /subscription -> SSE :ping, event
 func handleSubscription(response Response, request *Request) {
 	logRequest(request)
-	sess, conn, err := requestSession(request)
+	sess, conn, err := requestParamSession(request)
 	httpUnauthorizedIf(response, request, err)
 	defer sr.CloseRedis(conn)
 
@@ -121,6 +123,8 @@ func handleSubscription(response Response, request *Request) {
 
 	// Subscribe to redis
 	logf(request, "Retrieving events for %s...", sess.LogInfo())
+    sr.UnexpireSession(&sess, conn)
+    defer sr.ExpireSession(&sess, conn)
 
 	events, cancelled := sr.ReceiveEvents(sess.GameID)
 	defer func() { cancelled <- true }()
