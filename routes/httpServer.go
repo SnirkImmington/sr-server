@@ -106,6 +106,7 @@ func MakeHTTPSiteServer() http.Server {
 			}
 			return true
 		},
+		AllowedHeaders:   []string{"Authentication", "Content-Type"},
 		AllowCredentials: true,
 		Debug:            config.CORSDebug,
 	})
@@ -138,6 +139,7 @@ func MakeHTTPSSiteServer() http.Server {
 	c := cors.New(cors.Options{
 		AllowedOrigins:   []string{config.FrontendAddress, "https://" + config.TLSHostname},
 		AllowCredentials: true,
+		AllowedHeaders:   []string{"Authentication", "Content-Type"},
 		Debug:            config.CORSDebug,
 	})
 	restRouter.NewRoute().HandlerFunc(notFoundHandler)
