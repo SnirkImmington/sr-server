@@ -2,17 +2,19 @@ package routes
 
 import (
 	"errors"
+	//"io"
 	"sr"
+	// "strings"
 )
 
 var authRouter = restRouter.PathPrefix("/auth").Subrouter()
 
 type loginResponse struct {
-	playerID     string      `json:"playerID"`
-	gameInfo     sr.GameInfo `json:"game"`
-	authToken    string      `json:"authToken"`
-	sessionToken string      `json:"sessionToken"`
-	lastEvent    string      `json:"eventID"`
+	PlayerID     string      `json:"playerID"`
+	GameInfo     sr.GameInfo `json:"game"`
+	AuthToken    string      `json:"authToken"`
+	SessionID string      `json:"session"`
+	LastEvent    string      `json:"lastEvent"`
 }
 
 // POST /auth/login { gameID, playerName } -> auth token, session token
@@ -20,21 +22,31 @@ var _ = authRouter.HandleFunc("/login", handleLogin).Methods("POST")
 
 func handleLogin(response Response, request *Request) {
 	logRequest(request)
+	// var builder strings.Builder
+	//written, err := io.Copy(&builder, request.Body)
+	// logf(request, "Written: %v, err: %v", written, err)
+	// logf(request, "Body: %s", builder.String())
 	var loginRequest struct {
-		gameID     string `json:"gameID"`
-		playerName string `json:"playerName"`
+		GameID     string `json:"gameID"`
+		PlayerName string `json:"playerName"`
+		Persist    bool   `json:"persist"`
 	}
 	err := readBodyJSON(request, &loginRequest)
 	httpBadRequestIf(response, request, err)
 
-	playerName := loginRequest.playerName
-	gameID := loginRequest.gameID
+	playerName := loginRequest.PlayerName
+	gameID := loginRequest.GameID
+	persist := loginRequest.Persist
+	logf(request,
+		"Login request: %v joining %v (persist: %v)",
+		gameID, playerName, persist,
+	)
 
 	conn := sr.RedisPool.Get()
 	defer sr.CloseRedis(conn)
 
 	// Check for permission to join (if game ID exists)
-	gameExists, err := sr.GameExists(loginRequest.gameID, conn)
+	gameExists, err := sr.GameExists(gameID, conn)
 	httpInternalErrorIf(response, request, err)
 	if !gameExists {
 		httpNotFound(response, request, "Game not found")
@@ -47,25 +59,25 @@ func handleLogin(response Response, request *Request) {
 	eventID, err := sr.AddNewPlayerToKnownGame(&auth, conn)
 	httpInternalErrorIf(response, request, err)
 
-	logf(request, "Granted %s", auth)
+	logf(request, "Granted %s", auth.LogInfo())
 
 	// Get game info
 	gameInfo, err := sr.GetGameInfo(auth.GameID, conn)
 	httpInternalErrorIf(response, request, err)
 
-	// Create response
-	sessionToken, err := makeSessionToken(&session)
-	httpInternalErrorIf(response, request, err)
-	authToken, err := makeAuthToken(&auth)
-	httpInternalErrorIf(response, request, err)
+	var authToken string
+	if persist {
+		authToken, err = makeAuthToken(&auth)
+		httpInternalErrorIf(response, request, err)
+	}
 
 	// Response
 	loggedIn := loginResponse{
-		playerID:     string(auth.PlayerID),
-		gameInfo:     gameInfo,
-		authToken:    authToken,
-		sessionToken: sessionToken,
-		lastEvent:    eventID,
+		PlayerID:     string(auth.PlayerID),
+		GameInfo:     gameInfo,
+		AuthToken:    authToken,
+		SessionID: string(session.ID),
+		LastEvent:    eventID,
 	}
 	err = writeBodyJSON(response, loggedIn)
 	httpInternalErrorIf(response, request, err)
@@ -75,7 +87,7 @@ func handleLogin(response Response, request *Request) {
 }
 
 type reauthResponse struct {
-	sessionToken string `json:"sessionToken"`
+	SessionID string `json:"session"`
 }
 
 // POST auth/reauth { authToken } -> session token
@@ -108,11 +120,9 @@ func handleReauth(response Response, request *Request) {
 	// Make the session
 	session, err := sr.MakeSession(auth.GameID, auth.PlayerName, auth.PlayerID, conn)
 	httpInternalErrorIf(response, request, err)
-	sessionToken, err := makeSessionToken(&session)
-	httpInternalErrorIf(response, request, err)
 
 	reauthedResponse := reauthResponse{
-		sessionToken: sessionToken,
+		SessionID: string(session.ID),
 	}
 	err = writeBodyJSON(response, reauthedResponse)
 	httpInternalErrorIf(response, request, err)
@@ -129,19 +139,15 @@ func handleLogout(response Response, request *Request) {
 	logRequest(request)
 	sess, conn, err := requestSession(request)
 	httpUnauthorizedIf(response, request, err)
-	defer conn.Close()
+	defer sr.CloseRedis(conn)
 
-	// Remove the session by ID.
-	// Note that because of JWT we trust the session existed at some point.
-	// Also note how we checked redis for it just now.
 	ok, err := sr.RemoveSession(&sess, conn)
 	httpInternalErrorIf(response, request, err)
-
 	if !ok {
-		logf(request, "Exceptional state! Did not delete %v", sess)
-	}
-
-	logf(request, "Logged out %v", sess)
+		logf(request, "Possibly-timed-out session %v", sess)
+	} else {
+	    logf(request, "Logged out %v", sess)
+    }
 
 	httpSuccess(response, request, "logged out")
 }
