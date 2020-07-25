@@ -22,7 +22,9 @@ var _ = restRouter.HandleFunc("/robots.txt", handleRobots).Methods("GET")
 
 func handleRobots(response Response, request *Request) {
 	logRequest(request)
-	response.Write([]byte("user-agent: *\ndisallow: *"))
+	// No bots in the API please
+	_, err := response.Write([]byte("user-agent: *\ndisallow: *"))
+	httpInternalErrorIf(response, request, err)
 	httpSuccess(response, request, "user-agent: * disallow *")
 }
 
@@ -35,7 +37,8 @@ func handleCoffee(response Response, request *Request) {
 }
 
 type healthCheckResponse struct {
-	games int `json:"games"`
+	Games    int `json:"games"`
+	Sessions int `json:"sessions`
 }
 
 var _ = restRouter.HandleFunc("/health-check", handleHealthCheck).Methods("GET")
@@ -58,7 +61,7 @@ func handleHealthCheck(response Response, request *Request) {
 		return
 	}
 
-	// Get creds (only checked in production)
+	// Get creds (auth only checked in production)
 	if config.IsProduction {
 		auth := request.Header.Get("Authentication")
 		if !strings.HasPrefix(auth, "Bearer ") {
@@ -81,12 +84,16 @@ func handleHealthCheck(response Response, request *Request) {
 	gameCount, err := redis.Int(conn.Do("keys", "game:*"))
 	httpInternalErrorIf(response, request, err)
 
+	sessionCount, err := redis.Int(conn.Do("keys", "session:*"))
+	httpInternalErrorIf(response, request, err)
+
 	resp := healthCheckResponse{
-		games: gameCount,
+		Games:    gameCount,
+		Sessions: sessionCount,
 	}
 	err = writeBodyJSON(response, &resp)
 	httpInternalErrorIf(response, request, err)
 	httpSuccess(response, request,
-		gameCount, " games",
+		gameCount, " games ", sessionCount, " sessions",
 	)
 }
