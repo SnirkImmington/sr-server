@@ -2,6 +2,7 @@ package routes
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/janberktold/sse"
 	"log"
@@ -20,8 +21,19 @@ type Request = http.Request
 // Response is an alias for http.ResponseWriter
 type Response = http.ResponseWriter
 
+var errExtraBody = errors.New("encountered additional data after end of JSON body")
+
 func readBodyJSON(request *Request, value interface{}) error {
-	return json.NewDecoder(request.Body).Decode(value)
+	decoder := json.NewDecoder(request.Body)
+	decoder.DisallowUnknownFields()
+	err := decoder.Decode(value)
+	if err != nil {
+		return err
+	}
+	if decoder.More() {
+		return errExtraBody
+	}
+	return nil
 }
 
 func writeBodyJSON(response Response, value interface{}) error {
