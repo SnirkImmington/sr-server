@@ -7,14 +7,21 @@ import (
 	"sr/config"
 	"strings"
 	"time"
+    "os"
 )
+
+var redisLogger *log.Logger
 
 // RedisPool is the pool of redis connections
 var RedisPool = &redis.Pool{
 	MaxIdle:     10,
 	IdleTimeout: time.Duration(60) * time.Second,
 	Dial: func() (redis.Conn, error) {
-		return redis.DialURL(config.RedisURL)
+		conn, err := redis.DialURL(config.RedisURL)
+        if config.RedisDebug && err == nil {
+            return redis.NewLoggingConn(conn, redisLogger, "redis"), nil
+        }
+        return conn, err
 	},
 }
 
@@ -26,18 +33,37 @@ func CloseRedis(conn redis.Conn) {
 	}
 }
 
-func RegisterDefaultGames() {
+func SetupRedis() {
+    if config.RedisDebug {
+        redisLogger = log.New(os.Stdout, "", log.Ltime | log.Lshortfile)
+    }
+
 	conn := RedisPool.Get()
 	defer CloseRedis(conn)
+
+	// Initialize games
 
 	gameNames := strings.Split(config.HardcodedGameNames, ",")
 
 	for _, game := range gameNames {
 		_, err := conn.Do("hmset", "game:"+game, "event_id", 0)
 		if err != nil {
-			panic(fmt.Sprintf("Unable to connect to redis: ", err))
+			panic(fmt.Sprintf("Unable to hardcode games: ", err))
 		}
 	}
 
+	ver, err := AuthVersion(conn)
+	if err != nil {
+		_, err := conn.Do("set", "auth_version", "0")
+		if err != nil {
+			panic(fmt.Sprintf("Unable to set auth version: ", err))
+		}
+		ver = 0
+		log.Print("Set default auth version")
+	} else {
+		log.Print("Retrieved default auth version")
+	}
+
 	log.Print("Registered ", len(gameNames), " hardcoded game IDs.")
+	log.Print("Using auth version ", ver, ".")
 }

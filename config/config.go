@@ -17,6 +17,10 @@ var (
 	// CORSDebug toggles debugging from the github/rs/cors library.
 	CORSDebug = readBool("CORS_DEBUG", false)
 
+    // RedisDebug toggles logging every Redis command.
+    // It defaults to `!IsProduction`.
+    RedisDebug = readBool("REDIS_DEBUG", false)
+
 	// Go Server Configuration
 	// The dev server/prod server/redirect server can be configured to run on
 	// different ports, so the server can run non-root behind a reverse proxy or

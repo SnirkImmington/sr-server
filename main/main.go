@@ -53,7 +53,7 @@ func main() {
 
 	rand.Seed(time.Now().UnixNano())
 	sr.BeginGeneratingRolls()
-	sr.RegisterDefaultGames()
+	sr.SetupRedis()
 	config.VerifyConfig()
 
 	log.Print("Shadowroller:", SHADOWROLLER, "\n")
@@ -62,6 +62,8 @@ func main() {
 	if err != nil {
 		panic(fmt.Sprintf("Unable to walk routes: %v", err))
 	}
+
+	log.Print(config.HardcodedGameNames)
 
 	// Run http->https and main servers in loops.
 	if config.IsProduction {
