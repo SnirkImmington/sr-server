@@ -126,7 +126,7 @@ func handleSubscription(response Response, request *Request) {
     sr.UnexpireSession(&sess, conn)
     defer sr.ExpireSession(&sess, conn)
 
-	events, cancelled := sr.ReceiveEvents(sess.GameID)
+	events, cancelled := sr.ReceiveEvents(sess.GameID, requestID(request))
 	defer func() { cancelled <- true }()
 
 	selectInterval := time.Duration(config.SSEPingSecs) * time.Second
