@@ -4,7 +4,7 @@ import (
 	"errors"
 	"github.com/gomodule/redigo/redis"
 	"sr"
-	"strings"
+    "strings"
 )
 
 var errNoAuthBearer = errors.New("httpSession: no auth: bearer header")
@@ -23,7 +23,7 @@ func sessionFromParams(request *Request) (string, error) {
     if session == "" {
         return "", errNoSessionParam
     }
-    return strings.ReplaceAll(session, " ", "+"), nil
+    return session, nil
 }
 
 // requestSession retrieves the authenticated session for the request.

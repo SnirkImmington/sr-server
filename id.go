@@ -23,6 +23,7 @@ func GenUID() UID {
 	return UID(encodeBytes(6))
 }
 
+// GenSessionID generates a session UID, longer than the default.
 func GenSessionID() UID {
     return UID(encodeBytes(9))
 }
@@ -30,5 +31,5 @@ func GenSessionID() UID {
 func encodeBytes(size uint) string {
 	bytes := make([]byte, size)
 	rand.Read(bytes)
-	return base64.StdEncoding.EncodeToString(bytes)
+	return base64.URLEncoding.EncodeToString(bytes)
 }
