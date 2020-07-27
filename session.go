@@ -1,58 +1,81 @@
 package sr
 
 import (
+	"errors"
 	"fmt"
 	"github.com/gomodule/redigo/redis"
+	"log"
 	"sr/config"
-    "errors"
-    "log"
+    "time"
 )
 
-// Session represents a temporary Auth of a user's credentials.
+// Session is a temporary or persistent authentication token for users.
 //
 // Sessions are used in order to track authenticated requests over
-// remote calls. In the REST API, sessions are kept as JWTs of session IDs.
+// remote calls by passing their IDs.
 //
 // Sessions are checked by redis for each authenticated endpoint hit.
 // In addition to IDs of the auth'd player and game, sessions contain
-// commonly-used data, such as the player name. This data must be kept up to
-// date.
+// commonly-used data, such as the player name, in order to reduce the
+// number of database requests handlers make. This data must be kept up to
+// date in the session if it is modified elsewhere.
 //
-// Sessions are expired at a configurable interval after their owners drop
-// from the game subscription. Web clients are told to drop session tokens.
+// Temporary sessions are set to expire with a short TTL when the user is not
+// reading from a game subscription.
+//
+// Persistent sessions are set to expire with a longer-term TTL.
 type Session struct {
 	ID       UID    `redis:"-"`
 	GameID   string `redis:"gameID"`
 	PlayerID UID    `redis:"playerID"`
+	Persist  bool   `redis:"persist"`
 
 	PlayerName string `redis:"playerName"`
 }
 
-func (s *Session) LogInfo() string {
-	return fmt.Sprintf(
-		"%v (%v) in %v",
-		s.PlayerID, s.PlayerName, s.GameID,
-	)
+func (s *Session) Type() string {
+    if s.Persist {
+        return "persist"
+    } else {
+        return "temp"
+    }
 }
+
+func (s *Session) LogInfo() string {
+    return fmt.Sprintf(
+        "%v (%v) in %v",
+        s.PlayerName, s.PlayerID, s.GameID,
+    )
+}
+
 
 func (s *Session) String() string {
 	return fmt.Sprintf(
-		"%v (%v) in %v (%s)",
-		s.PlayerID, s.PlayerName, s.GameID, s.ID,
+		"%v (%v) in %v (%s %v)",
+		s.PlayerName, s.PlayerID, s.GameID, s.ID, s.Type(),
 	)
 }
 
-func (s Session) redisKey() string {
+func (s *Session) redisKey() string {
+	if s == nil || s.ID == "" {
+		panic("Attempted to call redisKey() on nil session")
+	}
 	return "session:" + string(s.ID)
 }
 
+func NewPlayerSession(gameID string, playerName string, persist bool, conn redis.Conn) (Session, error) {
+    playerID := GenUID()
+    return MakeSession(gameID, playerName, playerID, persist, conn)
+}
+
 // MakeSession adds a session for the given player in the given game
-func MakeSession(gameID string, playerName string, playerID UID, conn redis.Conn) (Session, error) {
-	sessionID := GenUID()
+func MakeSession(gameID string, playerName string, playerID UID, persist bool, conn redis.Conn) (Session, error) {
+	sessionID := GenSessionID()
 	session := Session{
 		ID:       sessionID,
 		GameID:   gameID,
 		PlayerID: playerID,
+		Persist:  persist,
 
 		PlayerName: playerName,
 	}
@@ -62,15 +85,20 @@ func MakeSession(gameID string, playerName string, playerID UID, conn redis.Conn
 	if err != nil {
 		return Session{}, err
 	}
-    _, err = ExpireSession(&session, conn)
-    if err != nil {
-        return Session{}, err
-    }
+	_, err = ExpireSession(&session, conn)
+	if err != nil {
+		return Session{}, err
+	}
 	return session, nil
 }
 
+var errNilSession = errors.New("Nil sessionID requested")
+
 // SessionExists returns whether the session exists in Redis.
 func SessionExists(sessionID string, conn redis.Conn) (bool, error) {
+	if sessionID == "" {
+		return false, errNilSession
+	}
 	return redis.Bool(conn.Do("exists", "session:"+sessionID))
 }
 
@@ -78,15 +106,18 @@ var errNoSessionData = errors.New("Unable to parse session from redis")
 
 // GetSessionByID retrieves a session from redis.
 func GetSessionByID(sessionID string, conn redis.Conn) (Session, error) {
+	if sessionID == "" {
+		return Session{}, errNilSession
+	}
 	var session Session
 	data, err := conn.Do("hgetall", "session:"+sessionID)
 	if err != nil {
-        log.Print("Error getting session")
+		log.Print("Error getting session")
 		return Session{}, err
 	}
-    if data == nil {
-        return Session{}, errors.New("Error")
-    }
+	if data == nil {
+		return Session{}, errors.New("Error")
+	}
 	err = redis.ScanStruct(data.([]interface{}), &session)
 	if err != nil {
 		return Session{}, err
@@ -102,8 +133,12 @@ func RemoveSession(session *Session, conn redis.Conn) (bool, error) {
 
 // ExpireSession sets the session to expire in `config.SesssionExpirySecs`.
 func ExpireSession(session *Session, conn redis.Conn) (bool, error) {
+    ttl := config.TempSessionTTLSecs
+    if session.Persist {
+        ttl = int(time.Duration(config.PersistSessionTTLDays * 24) * time.Hour)
+    }
 	return redis.Bool(conn.Do(
-		"expire", session.redisKey(), config.SessionExpirySecs,
+		"expire", session.redisKey(), ttl,
 	))
 }
 

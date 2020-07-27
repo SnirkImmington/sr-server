@@ -63,7 +63,7 @@ func recoveryMiddleware(wrapped http.Handler) http.Handler {
 				)
 				logf(request, string(debug.Stack()))
 				http.Error(response, "Internal Server Error", http.StatusInternalServerError)
-				logf(request, "-> 500 Internal Server Error")
+				logf(request, ">> 500 Internal Server Error")
 			}
 		}()
 		wrapped.ServeHTTP(response, request)
@@ -79,8 +79,8 @@ func rateLimitedMiddleware(wrapped http.Handler) http.Handler {
 
 		remoteAddr := strings.Split(request.RemoteAddr, ":")[0]
 
-		_, _, sec := time.Now().Clock()
-		rateLimitKey := fmt.Sprintf("ratelimit:%v:%v", remoteAddr, sec%10)
+        ts := time.Now().Unix()
+		rateLimitKey := fmt.Sprintf("ratelimit:%v:%v", remoteAddr, ts - ts%10)
 
 		current, err := redis.Int(conn.Do("get", rateLimitKey))
 		if err == redis.ErrNil {
@@ -100,8 +100,7 @@ func rateLimitedMiddleware(wrapped http.Handler) http.Handler {
 		httpInternalErrorIf(response, request, err)
 		err = conn.Send("incr", rateLimitKey)
 		httpInternalErrorIf(response, request, err)
-		// Always push back expire time: forces client to back off for 10s
-		err = conn.Send("expire", rateLimitKey, "10")
+		err = conn.Send("expire", rateLimitKey, "15")
 		httpInternalErrorIf(response, request, err)
 		err = conn.Send("exec")
 		httpInternalErrorIf(response, request, err)
@@ -109,5 +108,13 @@ func rateLimitedMiddleware(wrapped http.Handler) http.Handler {
 		if !limited {
 			wrapped.ServeHTTP(response, request)
 		}
+	})
+}
+
+func slowResponsesMiddleware(wrapped http.Handler) http.Handler {
+	return http.HandlerFunc(func(response Response, request *Request) {
+        logf(request, "Waiting 3 seconds to respond...")
+        time.Sleep(3 * time.Second)
+		wrapped.ServeHTTP(response, request)
 	})
 }

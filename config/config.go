@@ -18,8 +18,11 @@ var (
 	CORSDebug = readBool("CORS_DEBUG", false)
 
     // RedisDebug toggles logging every Redis command.
-    // It defaults to `!IsProduction`.
     RedisDebug = readBool("REDIS_DEBUG", false)
+
+    // SlowResponsesDebug adds 5s to each response handler for debugging purposes.
+    // This value is ignored on production.
+    SlowResponsesDebug = readBool("SLOW_RESPONSES_DEBUG", false)
 
 	// Go Server Configuration
 	// The dev server/prod server/redirect server can be configured to run on
@@ -95,14 +98,15 @@ var (
 	MaxHeaderBytes = readInt("MAX_HEADER_BYTES", 1<<20)
 	// MaxRequestsPer10Secs is a per-address rate limit for all endpoints.
 	// For details, see `middleware.go`.
-	MaxRequestsPer10Secs = readInt("MAX_REQUESTS_PER_10SECS", 20)
-	// AuthCookieMaxAge is the "Max-Age" field on JWT auth token cookies.
-	AuthCookieMaxAge = readInt("COOKIE_MAX_AGE", 2592000) // 30 days
-	// SessionExpirySecs is the amount of time a session remains after the
-	// frontend disconnects from the game subscription
-	SessionExpirySecs = readInt("SESSION_EXPIRY", 15*60)
+	MaxRequestsPer10Secs = readInt("MAX_REQUESTS_PER_10SECS", 16)
 
-	// Library Options
+    // TempSessionTTLSecs is the amount of time a temporary session is stored
+    // in redis after the subscription disconnects.
+	TempSessionTTLSecs = readInt("TEMP_SESSION_TTL_SECS", 15*60)
+    /// PersistSessionTTLDays is the amount of time persistent sessions last.
+    PersistSessionTTLDays = readInt("PERSIST_SESSION_TTL_DAYS", 30)
+
+    // Library Options
 
 	// RedisURL is the URI used to dial redis.
 	RedisURL = readString("REDIS_URL", "redis://:6379")
@@ -181,6 +185,10 @@ func VerifyConfig() {
 			log.Print("Config normalization: Overriding TLSEnable")
 			TLSEnable = true
 		}
+        if SlowResponsesDebug {
+            log.Print("Config normalization: Overriding SlowResponsesDebug")
+            SlowResponsesDebug = false
+        }
 	}
 	if len(JWTSecretKey) == 0 {
 		panic("No JWT key given!")

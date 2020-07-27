@@ -23,7 +23,7 @@ func sessionFromParams(request *Request) (string, error) {
     if session == "" {
         return "", errNoSessionParam
     }
-    return session, nil
+    return strings.ReplaceAll(session, " ", "+"), nil
 }
 
 // requestSession retrieves the authenticated session for the request.

@@ -23,6 +23,10 @@ func GenUID() UID {
 	return UID(encodeBytes(6))
 }
 
+func GenSessionID() UID {
+    return UID(encodeBytes(9))
+}
+
 func encodeBytes(size uint) string {
 	bytes := make([]byte, size)
 	rand.Read(bytes)

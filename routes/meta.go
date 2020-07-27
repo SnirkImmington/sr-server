@@ -15,7 +15,7 @@ var _ = restRouter.HandleFunc("/", handleRoot).Methods("GET")
 func handleRoot(response Response, request *Request) {
 	logRequest(request)
 	http.Redirect(response, request, config.FrontendAddress, http.StatusSeeOther)
-	logf(request, "-> 307 %v", config.FrontendAddress)
+	logf(request, ">> 307 %v", config.FrontendAddress)
 }
 
 var _ = restRouter.HandleFunc("/robots.txt", handleRobots).Methods("GET")
@@ -33,7 +33,7 @@ var _ = restRouter.HandleFunc("/coffee", handleCoffee).Methods("GET")
 func handleCoffee(response Response, request *Request) {
 	logRequest(request)
 	http.Error(response, "Soy coffee only", http.StatusTeapot)
-	logf(request, "418 -> Soy coffee only")
+	logf(request, ">> 418 Soy coffee only")
 }
 
 type healthCheckResponse struct {

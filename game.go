@@ -27,20 +27,20 @@ func GetGameInfo(gameID string, conn redis.Conn) (GameInfo, error) {
 // AddNewPlayerToKnownGame is used at login to add a newly created player to
 // a game. It does not verify the GameID.
 func AddNewPlayerToKnownGame(
-	auth *Auth,
+	session *Session,
 	conn redis.Conn,
 ) (string, error) {
-	_, err := conn.Do("hset", "player:"+auth.GameID, auth.PlayerID, auth.PlayerName)
+	_, err := conn.Do("hset", "player:"+session.GameID, session.PlayerID, session.PlayerName)
 	if err != nil {
 		return "", err
 	}
 
 	event := PlayerJoinEvent{
 		EventCore:  EventCore{Type: "playerJoin"},
-		PlayerID:   string(auth.PlayerID),
-		PlayerName: auth.PlayerName,
+		PlayerID:   string(session.PlayerID),
+		PlayerName: session.PlayerName,
 	}
-	newestEventID, err := PostEvent(auth.GameID, event, conn)
+	newestEventID, err := PostEvent(session.GameID, event, conn)
 	if err != nil {
 		return "", err
 	}

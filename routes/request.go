@@ -44,11 +44,11 @@ func writeBodyJSON(response Response, value interface{}) error {
 func logRequest(request *Request, values ...string) {
 	if config.IsProduction {
 		rawLog(request, fmt.Sprintf(
-			"<- %v %v %v %v",
+			"<< %v %v %v %v",
 			request.RemoteAddr, request.Proto, request.Method, request.URL,
 		))
 	} else {
-		rawLog(request, fmt.Sprintf("<- %v %v",
+		rawLog(request, fmt.Sprintf("<< %v %v",
 			request.Method, request.URL,
 		))
 	}
@@ -71,5 +71,5 @@ func httpSuccess(response Response, request *Request, message ...interface{}) {
 	if len(message) == 0 {
 		message = []interface{}{"OK"}
 	}
-	rawLog(request, fmt.Sprintf("-> 200 %v", fmt.Sprint(message...)))
+	rawLog(request, fmt.Sprintf(">> 200 %v", fmt.Sprint(message...)))
 }

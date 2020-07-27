@@ -17,7 +17,6 @@ var restRouter = BaseRouter()
 
 // BaseRouter produces a router which
 func BaseRouter() *mux.Router {
-	log.Print("Creating base router")
 	router := mux.NewRouter()
 	router.Use(
 		mux.MiddlewareFunc(requestIDMiddleware),
@@ -25,7 +24,9 @@ func BaseRouter() *mux.Router {
 		mux.MiddlewareFunc(rateLimitedMiddleware),
 		mux.MiddlewareFunc(headersMiddleware),
 	)
-	log.Print("Asked it to use things")
+    if config.SlowResponsesDebug {
+        router.Use(mux.MiddlewareFunc(slowResponsesMiddleware))
+    }
 	//router.NotFoundHandler = http.HandlerFunc(notFoundHandler)
 	return router
 }
@@ -33,7 +34,7 @@ func BaseRouter() *mux.Router {
 func notFoundHandler(response Response, request *Request) {
 	logRequest(request)
 	http.Error(response, "Not Found", http.StatusNotFound)
-	logf(request, "-> 404 Not Found")
+	logf(request, ">> 404 Not Found")
 }
 
 func displayRoute(route *mux.Route, handler *mux.Router, parents []*mux.Route) error {
@@ -81,12 +82,12 @@ func MakeHTTPRedirectServer() http.Server {
 	router.Use(rateLimitedMiddleware)
 	// no headers or not found handler
 	router.HandleFunc("/", func(response Response, request *Request) {
-		logf(request, "<- HTTP %v %v %v %v",
+		logf(request, "<< HTTP %v %v %v %v",
 			request.RemoteAddr, request.Proto, request.Method, request.URL,
 		)
 		newURL := "https://" + config.TLSHostname + request.URL.String()
 		http.Redirect(response, request, newURL, http.StatusMovedPermanently)
-		logf(request, "-> 308 HTTPS %v", request.URL)
+		logf(request, ">> 308 HTTPS %v", request.URL)
 	})
 
 	server := makeServerFromRouter(router)

@@ -1,20 +1,17 @@
 package routes
 
 import (
-	"errors"
-	//"io"
 	"sr"
-	// "strings"
 )
 
 var authRouter = restRouter.PathPrefix("/auth").Subrouter()
 
 type loginResponse struct {
-	PlayerID     string      `json:"playerID"`
-	GameInfo     sr.GameInfo `json:"game"`
-	AuthToken    string      `json:"authToken"`
-	SessionID string      `json:"session"`
-	LastEvent    string      `json:"lastEvent"`
+	PlayerID   string      `json:"playerID"`
+	PlayerName string      `json:"playerName"`
+	GameInfo   sr.GameInfo `json:"game"`
+	Session    string      `json:"session"`
+	LastEvent  string      `json:"lastEvent"`
 }
 
 // POST /auth/login { gameID, playerName } -> auth token, session token
@@ -22,10 +19,6 @@ var _ = authRouter.HandleFunc("/login", handleLogin).Methods("POST")
 
 func handleLogin(response Response, request *Request) {
 	logRequest(request)
-	// var builder strings.Builder
-	//written, err := io.Copy(&builder, request.Body)
-	// logf(request, "Written: %v, err: %v", written, err)
-	// logf(request, "Body: %s", builder.String())
 	var loginRequest struct {
 		GameID     string `json:"gameID"`
 		PlayerName string `json:"playerName"`
@@ -53,81 +46,83 @@ func handleLogin(response Response, request *Request) {
 	}
 
 	// Create player
-	auth, session, err := sr.CreateAuthedPlayer(gameID, playerName, conn)
+	session, err := sr.NewPlayerSession(gameID, playerName, persist, conn)
 	httpInternalErrorIf(response, request, err)
 
-	eventID, err := sr.AddNewPlayerToKnownGame(&auth, conn)
+	eventID, err := sr.AddNewPlayerToKnownGame(&session, conn)
 	httpInternalErrorIf(response, request, err)
 
-	logf(request, "Granted %s", auth.LogInfo())
+	logf(request, "Granted %s", session.LogInfo())
 
 	// Get game info
-	gameInfo, err := sr.GetGameInfo(auth.GameID, conn)
+	gameInfo, err := sr.GetGameInfo(session.GameID, conn)
 	httpInternalErrorIf(response, request, err)
-
-	var authToken string
-	if persist {
-		authToken, err = makeAuthToken(&auth)
-		httpInternalErrorIf(response, request, err)
-	}
 
 	// Response
 	loggedIn := loginResponse{
-		PlayerID:     string(auth.PlayerID),
-		GameInfo:     gameInfo,
-		AuthToken:    authToken,
-		SessionID: string(session.ID),
-		LastEvent:    eventID,
+		PlayerID:   string(session.PlayerID),
+		PlayerName: session.PlayerName,
+		GameInfo:   gameInfo,
+		Session:    string(session.ID),
+		LastEvent:  eventID,
 	}
 	err = writeBodyJSON(response, loggedIn)
 	httpInternalErrorIf(response, request, err)
 	httpSuccess(response, request,
-		auth.PlayerID, " joined ", gameID,
+		session.PlayerID, " joined ", gameID,
 	)
 }
 
-type reauthResponse struct {
-	SessionID string `json:"session"`
-}
-
-// POST auth/reauth { authToken } -> session token
+// POST /auth/reauth { session } -> { login response }
 var _ = authRouter.HandleFunc("/reauth", handleReauth).Methods("POST")
 
 func handleReauth(response Response, request *Request) {
 	logRequest(request)
-	var authRequest struct {
-		token string `json:"token"`
+	var reauthRequest struct {
+		Session string `json:"session"`
 	}
-	err := readBodyJSON(request, &authRequest)
-	httpInternalErrorIf(response, request, err)
-
-	// Check the auth
-	auth, err := parseAuthToken(authRequest.token)
+	err := readBodyJSON(request, &reauthRequest)
 	httpBadRequestIf(response, request, err)
+
+	requestSession := reauthRequest.Session
+
+	logf(request,
+		"Relogin request for %v", requestSession,
+	)
 
 	conn := sr.RedisPool.Get()
 	defer sr.CloseRedis(conn)
 
-	authValid, err := sr.CheckAuth(&auth, conn)
-	if !authValid {
-		if errors.Is(err, sr.ErrOldAuthVersion) {
-			httpUnauthorized(response, request, "You have been logged out")
-		} else {
-			httpInternalErrorIf(response, request, err)
-		}
+	session, err := sr.GetSessionByID(requestSession, conn)
+	httpUnauthorizedIf(response, request, err)
+
+	gameExists, err := sr.GameExists(session.GameID, conn)
+	httpInternalErrorIf(response, request, err)
+	if !gameExists {
+		_, err = sr.RemoveSession(&session, conn)
+        httpInternalErrorIf(response, request, err)
+        logf(request, "Removed session for deleted game %v", session.GameID)
+		httpUnauthorized(response, request, "Your session is now invalid")
 	}
 
-	// Make the session
-	session, err := sr.MakeSession(auth.GameID, auth.PlayerName, auth.PlayerID, conn)
+	// We skip showing a "player has joined" message here.
+
+	logf(request, "Confirmed %s", session.LogInfo())
+
+	gameInfo, err := sr.GetGameInfo(session.GameID, conn)
 	httpInternalErrorIf(response, request, err)
 
-	reauthedResponse := reauthResponse{
-		SessionID: string(session.ID),
+	reauthed := loginResponse{
+		PlayerID:   string(session.PlayerID),
+		PlayerName: session.PlayerName,
+		GameInfo:   gameInfo,
+		Session:    string(session.ID),
+		LastEvent:  "",
 	}
-	err = writeBodyJSON(response, reauthedResponse)
+	err = writeBodyJSON(response, reauthed)
 	httpInternalErrorIf(response, request, err)
 	httpSuccess(response, request,
-		"reauth ", auth.PlayerName, " to ", auth.GameID,
+		session.PlayerID, " reauthed for ", session.GameID,
 	)
 }
 
@@ -146,8 +141,8 @@ func handleLogout(response Response, request *Request) {
 	if !ok {
 		logf(request, "Possibly-timed-out session %v", sess)
 	} else {
-	    logf(request, "Logged out %v", sess)
-    }
+		logf(request, "Logged out %v", sess)
+	}
 
 	httpSuccess(response, request, "logged out")
 }

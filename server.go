@@ -52,18 +52,5 @@ func SetupRedis() {
 		}
 	}
 
-	ver, err := AuthVersion(conn)
-	if err != nil {
-		_, err := conn.Do("set", "auth_version", "0")
-		if err != nil {
-			panic(fmt.Sprintf("Unable to set auth version: ", err))
-		}
-		ver = 0
-		log.Print("Set default auth version")
-	} else {
-		log.Print("Retrieved default auth version")
-	}
-
 	log.Print("Registered ", len(gameNames), " hardcoded game IDs.")
-	log.Print("Using auth version ", ver, ".")
 }
