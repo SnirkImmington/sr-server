@@ -20,7 +20,7 @@ func sessionFromHeader(request *Request) (string, error) {
 
 func sessionFromParams(request *Request) (string, error) {
     session := request.URL.Query().Get("session")
-    if session == "" {
+    if session == "" || session == "null" || session == "undefined" {
         return "", errNoSessionParam
     }
     return session, nil
