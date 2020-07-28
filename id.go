@@ -20,12 +20,12 @@ type GameID string
 
 // GenUID creates a new random UID.
 func GenUID() UID {
-	return UID(encodeBytes(6))
+	return UID(encodeBytes(9))
 }
 
 // GenSessionID generates a session UID, longer than the default.
 func GenSessionID() UID {
-    return UID(encodeBytes(9))
+    return UID(encodeBytes(12))
 }
 
 func encodeBytes(size uint) string {
