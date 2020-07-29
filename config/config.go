@@ -89,7 +89,7 @@ var (
 
 	// SSEClientRetrySecs is the amount of time suggested to an SSE client to
 	// wait between reconnects.
-	SSEClientRetrySecs = readInt("SSE_CLIENT_RETRY_SECS", 5)
+	SSEClientRetrySecs = readInt("SSE_CLIENT_RETRY_SECS", 15)
 	// SSEPingSecs is the amount of time between SSE pings.
 	// Lack of SSE pings may cause the browser to close the SSE connection.
 	SSEPingSecs = readInt("SSE_PING_SECS", 20)
