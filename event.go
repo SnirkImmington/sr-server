@@ -31,6 +31,17 @@ type EdgeRollEvent struct {
 	Rounds     [][]int `json:"rounds"`
 }
 
+// RerollFailuresEvent is posted when a player rerolls failures on a prior roll.
+type RerollFailuresEvent struct {
+    EventCore
+    PrevID string `json:"prevID"`
+    PlayerID string `json:"pID"`
+    PlayerName string `json:"pName"`
+    Title string `json:"title"`
+    Prev []int `json:"prev"`
+    Roll []int `json:"roll"`
+}
+
 // PlayerJoinEvent is posted when a new player joins the game.
 type PlayerJoinEvent struct {
 	EventCore
@@ -38,8 +49,11 @@ type PlayerJoinEvent struct {
 	PlayerName string `json:"pName",redis:"pName"`
 }
 
-// Event interface determines what is sent to postEvent
+// Event type is passed into `PostEvent`.
 type Event interface{}
+
+// EventOut is retrievedfrom Redis. It contains the event's struct fields and type.
+type EventOut map[string]interface{}
 
 // PostEvent posts an event to Redis and returns the generated ID.
 func PostEvent(gameID string, event Event, conn redis.Conn) (string, error) {
@@ -54,12 +68,29 @@ func PostEvent(gameID string, event Event, conn redis.Conn) (string, error) {
 	return id, nil
 }
 
+// EventByID retrieves a single event from Redis via its ID.
+func EventByID(gameID string, eventID string, conn redis.Conn) (EventOut, error) {
+    data, err := conn.Do("XRANGE", "event:"+gameID, eventID, eventID)
+	// data is an array of key, eventlist. We only subscribed to 1 key.
+	eventKeyInfo := data.([]interface{})[0].([]interface{})
+	eventList := eventKeyInfo[1].([]interface{})
+
+	events, err := ScanEvents(eventList)
+    if err != nil {
+        return nil, err
+    }
+
+    return events[0], nil
+}
+
 var idRegex = regexp.MustCompile(`^([\d]{13})-([\d]+)$`)
 
+// ValidEventID returns whether the non-empty-string id is valid.
 func ValidEventID(id string) bool {
 	return idRegex.MatchString(id)
 }
 
+// ReceiveEvents subscribes to the event stream for a given game
 func ReceiveEvents(gameID string, requestID string) (<-chan string, chan<- bool) {
 	// Events channel is buffered: if there are too many events for our consumer,
     // we will block on channel send.
@@ -122,8 +153,9 @@ func ReceiveEvents(gameID string, requestID string) (<-chan string, chan<- bool)
 	return eventsChan, okChan
 }
 
-func ScanEvents(eventsData []interface{}) ([]map[string]interface{}, error) {
-	events := make([]map[string]interface{}, len(eventsData))
+// ScanEvents scans event strings from redis
+func ScanEvents(eventsData []interface{}) ([]EventOut, error) {
+	events := make([]EventOut, len(eventsData))
 
 	for i := 0; i < len(eventsData); i++ {
 		eventInfo := eventsData[i].([]interface{})
@@ -139,7 +171,7 @@ func ScanEvents(eventsData []interface{}) ([]map[string]interface{}, error) {
 			return nil, err
 		}
 		event["id"] = string(eventID)
-		events[i] = event
+		events[i] = EventOut(event)
 	}
 	return events, nil
 }
