@@ -115,20 +115,47 @@ func GetSessionByID(sessionID string, conn redis.Conn) (Session, error) {
 		log.Print("Error getting session")
 		return Session{}, err
 	}
-	if data == nil {
-		return Session{}, errors.New("Error")
+	if data == nil || len(data.([]interface{})) == 0 {
+		return Session{}, errNoSessionData
 	}
 	err = redis.ScanStruct(data.([]interface{}), &session)
 	if err != nil {
 		return Session{}, err
 	}
+    if session.GameID == "" || session.PlayerID == "" {
+        return Session{}, errNoSessionData
+    }
 	session.ID = UID(sessionID)
 
 	return session, nil
 }
 
 func RemoveSession(session *Session, conn redis.Conn) (bool, error) {
-	return redis.Bool(conn.Do("del", session.redisKey()))
+    err := conn.Send("MULTI")
+    if err != nil {
+        return false, err
+    }
+    err = conn.Send("DEL", session.redisKey())
+    if err != nil {
+        return false, err
+    }
+    err = conn.Send("HDEL", "player:"+session.GameID, session.PlayerID)
+    if err != nil {
+        return false, err
+    }
+    err = conn.Send("EXEC")
+    if err != nil {
+        return false, err
+    }
+    sessionDeleted, err := redis.Bool(conn.Receive())
+    if err != nil {
+        return false, err
+    }
+    playerDeleted, err := redis.Bool(conn.Receive())
+    if err != nil {
+        return false, err
+    }
+    return playerDeleted && sessionDeleted, nil
 }
 
 // ExpireSession sets the session to expire in `config.SesssionExpirySecs`.
