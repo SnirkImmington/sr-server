@@ -24,27 +24,27 @@ type TUID int64
 // GenTUID generates a new TUID using the current timestamp and crypto/rand noise.
 func GenTUID() TUID {
 	nowNanos := time.Now().UnixNano()
-    noise := TUIDNoise()
-    return BuildTUID(nowNanos, noise)
+	noise := TUIDNoise()
+	return BuildTUID(nowNanos, noise)
 }
 
 // TUIDForNanos generates a TUID for the given timeframe using crypto/rand noise.
 func TUIDForNanos(nanos int64) TUID {
-    noise := TUIDNoise()
-    return BuildTUID(nanos, noise)
+	noise := TUIDNoise()
+	return BuildTUID(nanos, noise)
 }
 
 // TUIDWithNoise generates a TUID using the current timestamp and the given noise.
 func TUIDWithNoise(noise int64) TUID {
-    nowNanos := time.Now().UnixNano()
-    return BuildTUID(nowNanos, noise)
+	nowNanos := time.Now().UnixNano()
+	return BuildTUID(nowNanos, noise)
 }
 
 // BuildTUID produces a TUID for the closest timeframe using the given timestamp
 // and noise.
 func BuildTUID(nanos int64, noise int64) TUID {
-    decis := nanos / tuidMultiplier
-    return TUID((decis << tuidNoiseShift) + noise)
+	decis := nanos / tuidMultiplier
+	return TUID((decis << tuidNoiseShift) + noise)
 }
 
 // Timestamp retrieves the timestamp information from the given TUID.

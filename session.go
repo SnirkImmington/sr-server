@@ -6,7 +6,7 @@ import (
 	"github.com/gomodule/redigo/redis"
 	"log"
 	"sr/config"
-    "time"
+	"time"
 )
 
 // Session is a temporary or persistent authentication token for users.
@@ -34,20 +34,19 @@ type Session struct {
 }
 
 func (s *Session) Type() string {
-    if s.Persist {
-        return "persist"
-    } else {
-        return "temp"
-    }
+	if s.Persist {
+		return "persist"
+	} else {
+		return "temp"
+	}
 }
 
 func (s *Session) LogInfo() string {
-    return fmt.Sprintf(
-        "%v (%v) in %v",
-        s.PlayerName, s.PlayerID, s.GameID,
-    )
+	return fmt.Sprintf(
+		"%v (%v) in %v",
+		s.PlayerName, s.PlayerID, s.GameID,
+	)
 }
-
 
 func (s *Session) String() string {
 	return fmt.Sprintf(
@@ -64,8 +63,8 @@ func (s *Session) redisKey() string {
 }
 
 func NewPlayerSession(gameID string, playerName string, persist bool, conn redis.Conn) (Session, error) {
-    playerID := GenUID()
-    return MakeSession(gameID, playerName, playerID, persist, conn)
+	playerID := GenUID()
+	return MakeSession(gameID, playerName, playerID, persist, conn)
 }
 
 // MakeSession adds a session for the given player in the given game
@@ -122,48 +121,48 @@ func GetSessionByID(sessionID string, conn redis.Conn) (Session, error) {
 	if err != nil {
 		return Session{}, err
 	}
-    if session.GameID == "" || session.PlayerID == "" {
-        return Session{}, errNoSessionData
-    }
+	if session.GameID == "" || session.PlayerID == "" {
+		return Session{}, errNoSessionData
+	}
 	session.ID = UID(sessionID)
 
 	return session, nil
 }
 
 func RemoveSession(session *Session, conn redis.Conn) (bool, error) {
-    err := conn.Send("MULTI")
-    if err != nil {
-        return false, err
-    }
-    err = conn.Send("DEL", session.redisKey())
-    if err != nil {
-        return false, err
-    }
-    err = conn.Send("HDEL", "player:"+session.GameID, session.PlayerID)
-    if err != nil {
-        return false, err
-    }
-    err = conn.Send("EXEC")
-    if err != nil {
-        return false, err
-    }
-    sessionDeleted, err := redis.Bool(conn.Receive())
-    if err != nil {
-        return false, err
-    }
-    playerDeleted, err := redis.Bool(conn.Receive())
-    if err != nil {
-        return false, err
-    }
-    return playerDeleted && sessionDeleted, nil
+	err := conn.Send("MULTI")
+	if err != nil {
+		return false, err
+	}
+	err = conn.Send("DEL", session.redisKey())
+	if err != nil {
+		return false, err
+	}
+	err = conn.Send("HDEL", "player:"+session.GameID, session.PlayerID)
+	if err != nil {
+		return false, err
+	}
+	err = conn.Send("EXEC")
+	if err != nil {
+		return false, err
+	}
+	sessionDeleted, err := redis.Bool(conn.Receive())
+	if err != nil {
+		return false, err
+	}
+	playerDeleted, err := redis.Bool(conn.Receive())
+	if err != nil {
+		return false, err
+	}
+	return playerDeleted && sessionDeleted, nil
 }
 
 // ExpireSession sets the session to expire in `config.SesssionExpirySecs`.
 func ExpireSession(session *Session, conn redis.Conn) (bool, error) {
-    ttl := config.TempSessionTTLSecs
-    if session.Persist {
-        ttl = int(time.Duration(config.PersistSessionTTLDays * 24) * time.Hour)
-    }
+	ttl := config.TempSessionTTLSecs
+	if session.Persist {
+		ttl = int(time.Duration(config.PersistSessionTTLDays*24) * time.Hour)
+	}
 	return redis.Bool(conn.Do(
 		"expire", session.redisKey(), ttl,
 	))

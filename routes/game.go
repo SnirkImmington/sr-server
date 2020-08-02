@@ -120,24 +120,27 @@ func handleReroll(response Response, request *Request) {
     if previousRoll["type"] != "roll" {
         httpBadRequest(response, request, "Invalid previous roll")
     }
+    var previousDice []int
     switch previousRoll["dice"].(type) {
     case []int:
+        previousDice = previousRoll["dice"].([]int)
         break;
     default:
         logf(request, "Expected prior roll to have dice: %v", previousRoll)
         httpBadRequest(response, request, "Invalid previous roll")
     }
 
+
     if reroll.Type == sr.RerollTypeRerollFailures {
-        newDice := sr.RerollFailures(previousRoll["roll"].([]int))
+        newDice := sr.RerollFailures(previousDice)
+        rounds := [][]int{ previousDice, newDice }
         rerollEvent := sr.RerollFailuresEvent{
             EventCore: sr.EventCore{"rerollFailures"},
             PrevID: reroll.RollID,
             PlayerID: string(sess.PlayerID),
             PlayerName: sess.PlayerName,
             Title: previousRoll["title"].(string),
-            Prev: previousRoll["dice"].([]int),
-            Roll: newDice,
+            Rounds: rounds,
         }
         id, err := sr.PostEvent(sess.GameID, rerollEvent, conn)
         httpInternalErrorIf(response, request, err)

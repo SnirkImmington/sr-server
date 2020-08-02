@@ -13,7 +13,7 @@ const RerollTypeRerollFailures = "reroll"
 
 // ValidRerollType determines if the requested reroll type is valid.
 func ValidRerollType(ty string) bool {
-    return ty == RerollTypeRerollFailures
+	return ty == RerollTypeRerollFailures
 }
 
 /*

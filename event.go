@@ -33,13 +33,12 @@ type EdgeRollEvent struct {
 
 // RerollFailuresEvent is posted when a player rerolls failures on a prior roll.
 type RerollFailuresEvent struct {
-    EventCore
-    PrevID string `json:"prevID"`
-    PlayerID string `json:"pID"`
-    PlayerName string `json:"pName"`
-    Title string `json:"title"`
-    Prev []int `json:"prev"`
-    Roll []int `json:"roll"`
+	EventCore
+	PrevID     string  `json:"prevID"`
+	PlayerID   string  `json:"pID"`
+	PlayerName string  `json:"pName"`
+	Title      string  `json:"title"`
+	Rounds     [][]int `json:"rounds"`
 }
 
 // PlayerJoinEvent is posted when a new player joins the game.
@@ -70,17 +69,17 @@ func PostEvent(gameID string, event Event, conn redis.Conn) (string, error) {
 
 // EventByID retrieves a single event from Redis via its ID.
 func EventByID(gameID string, eventID string, conn redis.Conn) (EventOut, error) {
-    data, err := conn.Do("XRANGE", "event:"+gameID, eventID, eventID)
+	data, err := conn.Do("XRANGE", "event:"+gameID, eventID, eventID)
 	// data is an array of key, eventlist. We only subscribed to 1 key.
 	eventKeyInfo := data.([]interface{})[0].([]interface{})
 	eventList := eventKeyInfo[1].([]interface{})
 
 	events, err := ScanEvents(eventList)
-    if err != nil {
-        return nil, err
-    }
+	if err != nil {
+		return nil, err
+	}
 
-    return events[0], nil
+	return events[0], nil
 }
 
 var idRegex = regexp.MustCompile(`^([\d]{13})-([\d]+)$`)
@@ -93,7 +92,7 @@ func ValidEventID(id string) bool {
 // ReceiveEvents subscribes to the event stream for a given game
 func ReceiveEvents(gameID string, requestID string) (<-chan string, chan<- bool) {
 	// Events channel is buffered: if there are too many events for our consumer,
-    // we will block on channel send.
+	// we will block on channel send.
 	eventsChan := make(chan string, 10)
 	okChan := make(chan bool)
 	go func() {
@@ -109,7 +108,7 @@ func ReceiveEvents(gameID string, requestID string) (<-chan string, chan<- bool)
 			select {
 			case <-okChan:
 				log.Printf("%vE: Received cancel signal", requestID)
-                log.Printf("%vE << close: signal", requestID)
+				log.Printf("%vE << close: signal", requestID)
 				return
 			default:
 			}
@@ -119,10 +118,10 @@ func ReceiveEvents(gameID string, requestID string) (<-chan string, chan<- bool)
 			))
 			if err != nil {
 				log.Printf(
-                    "%vE Error reading stream for %v: %v",
-                    requestID, gameID, err,
-                )
-                log.Printf("%vE << close error: %v", requestID, err)
+					"%vE Error reading stream for %v: %v",
+					requestID, gameID, err,
+				)
+				log.Printf("%vE << close error: %v", requestID, err)
 				return
 			}
 
@@ -133,20 +132,20 @@ func ReceiveEvents(gameID string, requestID string) (<-chan string, chan<- bool)
 			events, err := ScanEvents(eventList)
 			if err != nil {
 				log.Printf("%vE Unable to deserialize event: %v", requestID, err)
-                log.Printf("%vE << close: redis error: %v", requestID, err)
+				log.Printf("%vE << close: redis error: %v", requestID, err)
 				return
 			}
 			for _, event := range events {
 				reStringed, err := json.Marshal(event)
 				if err != nil {
 					log.Printf(
-                        "%vE Unable to write event back to string: %v",
-                        requestID, err,
-                    )
+						"%vE Unable to write event back to string: %v",
+						requestID, err,
+					)
 					continue
 				}
 				eventsChan <- string(reStringed)
-                // We don't log sending the event on this side of the channel.
+				// We don't log sending the event on this side of the channel.
 			}
 		}
 	}()
