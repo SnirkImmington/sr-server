@@ -76,6 +76,7 @@ var (
 	FrontendDomain = readString("FRONTEND_DOMAIN", "http://localhost:3000")
 	// FrontendAddress is the redirect address that / should redirect to.
 	// This is a full URL, useful for i.e. Github project sites.
+	// If unset, the root URL will not redirect.
 	FrontendAddress = readString("FRONTEND_ADDRESS", FrontendDomain)
 
 	// Keys
@@ -198,6 +199,7 @@ func readKeyFile(name string, defaultValue string) []byte {
 		contents = string(fileContent)
 	}
 	if contents == "" {
+		log.Print("config: empty key ", name, " used!")
 		return []byte(contents)
 	}
 	val, err := base64.StdEncoding.DecodeString(contents)
@@ -227,7 +229,7 @@ func VerifyConfig() {
 			panic("HealthcheckSecretKey should be longer")
 		}
 	}
-	if PublishRedirect == PublishHTTPS {
+	if PublishRedirect == PublishHTTPS && PublishHTTPS != "" {
 		panic("Cannot publish HTTP redirect and HTTPS servers on the same port!")
 	}
 	if (PublishHTTP == "") == (PublishHTTPS == "") {
