@@ -7,50 +7,6 @@ import (
 	"regexp"
 )
 
-// EventCore contains the type of events
-type EventCore struct {
-	//ID   string `json:"id,omitempty"` // specially written by Redis
-	Type string `json:"ty",redis:"ty"`
-}
-
-// RollEvent is posted when a player rolls dice.
-type RollEvent struct {
-	EventCore
-	PlayerID   string `json:"pID",redis:"pID"`
-	PlayerName string `json:"pName",redis:"pName"`
-	Roll       []int  `json:"roll",redis:"roll"`
-	Title      string `json:"title",redis:"title"`
-}
-
-// EdgeRollEvent is posted when a player pushes the limit to roll dice.
-type EdgeRollEvent struct {
-	EventCore
-	PlayerID   string  `json:"pID"`
-	PlayerName string  `json:"pName"`
-	Title      string  `json:"title"`
-	Rounds     [][]int `json:"rounds"`
-}
-
-// RerollFailuresEvent is posted when a player rerolls failures on a prior roll.
-type RerollFailuresEvent struct {
-	EventCore
-	PrevID     string  `json:"prevID"`
-	PlayerID   string  `json:"pID"`
-	PlayerName string  `json:"pName"`
-	Title      string  `json:"title"`
-	Rounds     [][]int `json:"rounds"`
-}
-
-// PlayerJoinEvent is posted when a new player joins the game.
-type PlayerJoinEvent struct {
-	EventCore
-	PlayerID   string `json:"pID",redis:"pID"`
-	PlayerName string `json:"pName",redis:"pName"`
-}
-
-// Event type is passed into `PostEvent`.
-type Event interface{}
-
 // EventOut is retrievedfrom Redis. It contains the event's struct fields and type.
 type EventOut map[string]interface{}
 
