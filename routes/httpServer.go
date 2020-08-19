@@ -59,7 +59,7 @@ func notFoundHandler(response Response, request *Request) {
 	logf(request, ">> 404 Not Found")
 }
 
-func makeCORSRouter() *cors.Cors {
+func makeCORSConfig() *cors.Cors {
 	var c *cors.Cors
 	if config.IsProduction {
 		c = cors.New(cors.Options{
@@ -108,18 +108,9 @@ func DisplaySiteRoutes() error {
 	return err
 }
 
-/*
-   TLS config
-
-   Let's Encrypt TLS server inspired by:
-   https://blog.kowalczyk.info/article/Jl3G/https-for-free-in-go-with-little-help-of-lets-encrypt.html
-   Gist: https://github.com/kjk/go-cookbook/blob/master/free-ssl-certificates/main.go
-
-
-   TLS hardening options copied from:
-   https://blog.cloudflare.com/exposing-go-on-the-internet/
-
-*/
+//
+// TLS Config
+//
 
 // certManager is used when Let's Encrypt is enabled.
 var certManager = autocert.Manager{
@@ -153,6 +144,10 @@ func autocertTLSConfig() tls.Config {
 	return conf
 }
 
+//
+// Servers
+//
+
 func MakeHTTPRedirectServer() http.Server {
 	router := redirectRouter()
 	server := makeServerFromRouter(router)
@@ -164,58 +159,28 @@ func MakeHTTPRedirectServer() http.Server {
 }
 
 func MakeHTTPSiteServer() http.Server {
-	if config.IsProduction {
-		panic("Attempted to make a site local server in production!")
-	}
-	c := cors.New(cors.Options{
-		AllowOriginFunc: func(origin string) bool {
-			if config.CORSDebug {
-				log.Print("Accepting CORS origin ", origin)
-			}
-			return true
-		},
-		AllowedHeaders:   []string{"Authentication", "Content-Type"},
-		AllowCredentials: true,
-		Debug:            config.CORSDebug,
-	})
-	restRouter.Handle("/task", taskRouter)
+	c := makeCORSConfig()
 	restRouter.NewRoute().HandlerFunc(notFoundHandler)
 	router := c.Handler(restRouter)
 	server := makeServerFromRouter(router)
-	server.Addr = config.HostAddress
+	server.Addr = config.PublishHTTP
 	return server
 }
 
 func MakeHTTPSSiteServer() http.Server {
-	tlsConfig := tls.Config{
-		PreferServerCipherSuites: true,
-		CurvePreferences: []tls.CurveID{
-			tls.CurveP256,
-			tls.X25519,
-		},
-		MinVersion: tls.VersionTLS12,
-		CipherSuites: []uint16{
-			// TODO check if these are supported by the CPU architecture.
-			tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
-			tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
-			tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305,
-			tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305,
-			tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
-			tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
-		},
-		GetCertificate: certManager.GetCertificate,
+	var tlsConf tls.Config
+	if config.TLSAutocertDir != "" {
+		tlsConf = autocertTLSConfig()
+	} else {
+		tlsConf = baseTLSConfig()
 	}
-	c := cors.New(cors.Options{
-		AllowedOrigins:   []string{config.FrontendDomain, "https://" + config.TLSHostname},
-		AllowCredentials: true,
-		AllowedHeaders:   []string{"Authentication", "Content-Type"},
-		Debug:            config.CORSDebug,
-	})
+	c := makeCORSConfig()
 	restRouter.NewRoute().HandlerFunc(notFoundHandler)
+	restRouter.Use(tlsHeadersMiddleware)
 	router := c.Handler(restRouter)
 	server := makeServerFromRouter(router)
-	server.TLSConfig = &tlsConfig
-	server.Addr = config.HostHTTPS
+	server.TLSConfig = &tlsConf
+	server.Addr = config.PublishHTTPS
 	return server
 }
 
