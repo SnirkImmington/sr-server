@@ -83,8 +83,6 @@ var (
 	// In development, these are hardcoded to known values for testing.
 	// In production, these must point to keyfiles containing base64 encoded keys.
 
-	// JWTSecretKey is the secure key/key file used to encrypt JWT tokens.
-	JWTSecretKey = readKeyFile("KEYFILE_JWT", "133713371337")
 	// HealthCheckSecretKey allows for sending debug info with health checks.
 	// If the contents of this key are passed to /health-check, debug info is sent.
 	// This is always done in development. Leave blank to disable in production.
@@ -223,9 +221,6 @@ func VerifyConfig() {
 		if TLSHostname == "localhost" {
 			log.Print("Warning: TLSHostname set to localhost on production")
 		}
-		if len(JWTSecretKey) < 256 {
-			panic("JWTSecretKey should be longer")
-		}
 		if len(HealthCheckSecretKey) != 0 && len(HealthCheckSecretKey) < 256 {
 			panic("HealthcheckSecretKey should be longer")
 		}
@@ -242,9 +237,6 @@ func VerifyConfig() {
 		} else if PublishHTTP != "" {
 			log.Print("Warning: publishing HTTP server and HTTP redirect server.")
 		}
-	}
-	if len(JWTSecretKey) == 0 {
-		panic("No JWT key given!")
 	}
 	if (TLSAutocertDir == "") == (len(TLSCertFiles) == 0) {
 		panic("Must set one of TLSAutocertDir and TLSCertFiles!")
