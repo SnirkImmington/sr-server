@@ -196,7 +196,8 @@ func readKeyFile(name string, defaultValue string) []byte {
 		if err != nil {
 			panic(fmt.Sprintf("Unable to read key %v from file %v: %v", name, envVal, err))
 		}
-		contents = string(fileContent)
+		// Allow for a trailing newline in the file
+		contents = strings.TrimSpace(string(fileContent))
 	}
 	if contents == "" {
 		log.Print("config: empty key ", name, " used!")
