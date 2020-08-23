@@ -7,28 +7,33 @@ import (
 	"regexp"
 )
 
-// EventOut is retrievedfrom Redis. It contains the event's struct fields and type.
-type EventOut map[string]interface{}
-
 // PostEvent posts an event to Redis and returns the generated ID.
-func PostEvent(gameID string, event Event, conn redis.Conn) (string, error) {
+func PostEvent(gameID string, event Event, conn redis.Conn) error {
 	bytes, err := json.Marshal(event)
 	if err != nil {
-		return "", err
+		return err
 	}
-	id, err := redis.String(conn.Do("XADD", "event:"+gameID, "*", "payload", bytes))
+	_, err = conn.Do("ZADD", "history:"+gameID, "NX", event.GetID(), bytes)
+	//id, err := redis.String(conn.Do("XADD", "event:"+gameID, "*", "payload", bytes))
 	if err != nil {
-		return "", err
+		return err
 	}
-	return id, nil
+	return nil
 }
 
 // EventByID retrieves a single event from Redis via its ID.
-func EventByID(gameID string, eventID string, conn redis.Conn) (EventOut, error) {
-	data, err := conn.Do("XRANGE", "event:"+gameID, eventID, eventID)
-	events, err := ScanEvents(data.([]interface{}))
+func EventByID(gameID string, eventID string, conn redis.Conn) (string, error) {
+	//data, err := conn.Do("XRANGE", "event:"+gameID, eventID, eventID)
+	//events, err := ScanEvents(data.([]interface{}))
+	events, err := redis.Strings(conn.Do(
+		"ZRANGEBYSCORE",
+		"history:"+gameID,
+		eventID, eventID,
+		"LIMIT", "0", "1",
+	))
+
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 
 	return events[0], nil
@@ -65,9 +70,10 @@ func ReceiveEvents(gameID string, requestID string) (<-chan string, chan<- bool)
 			default:
 			}
 
-			data, err := redis.Values(conn.Do(
+			_, err := redis.Values(conn.Do(
 				"XREAD", "BLOCK", 0, "STREAMS", "event:"+gameID, "$",
 			))
+			events := []string{}
 			if err != nil {
 				log.Printf(
 					"%vE Error reading stream for %v: %v",
@@ -77,11 +83,6 @@ func ReceiveEvents(gameID string, requestID string) (<-chan string, chan<- bool)
 				return
 			}
 
-			// data is an array of key, eventlist. We only subscribed to 1 key.
-			eventKeyInfo := data[0].([]interface{})
-			eventList := eventKeyInfo[1].([]interface{})
-
-			events, err := ScanEvents(eventList)
 			if err != nil {
 				log.Printf("%vE Unable to deserialize event: %v", requestID, err)
 				log.Printf("%vE << close: redis error: %v", requestID, err)
@@ -103,38 +104,3 @@ func ReceiveEvents(gameID string, requestID string) (<-chan string, chan<- bool)
 	}()
 	return eventsChan, okChan
 }
-
-// ScanEvents scans event strings from redis
-func ScanEvents(eventsData []interface{}) ([]EventOut, error) {
-	events := make([]EventOut, len(eventsData))
-
-	for i := 0; i < len(eventsData); i++ {
-		eventInfo := eventsData[i].([]interface{})
-
-		eventID := string(eventInfo[0].([]byte))
-		fieldList := eventInfo[1].([]interface{})
-
-		eventValue := fieldList[1].([]byte)
-
-		var event map[string]interface{}
-		err := json.Unmarshal(eventValue, &event)
-		if err != nil {
-			return nil, err
-		}
-		event["id"] = string(eventID)
-		events[i] = EventOut(event)
-	}
-	return events, nil
-}
-
-/*
-
-*3
-  *2
-    $15 id
-    *2
-      $7 payload
-      $90 CONTENT
-  *2
-    $15 id
-*/
