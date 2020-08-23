@@ -2,6 +2,7 @@ package sr
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/gomodule/redigo/redis"
 	"log"
 	"regexp"
@@ -11,13 +12,35 @@ import (
 func PostEvent(gameID string, event Event, conn redis.Conn) error {
 	bytes, err := json.Marshal(event)
 	if err != nil {
-		return err
+		return fmt.Errorf("Unable to marshal event to JSON: %w", err)
 	}
-	_, err = conn.Do("ZADD", "history:"+gameID, "NX", event.GetID(), bytes)
-	//id, err := redis.String(conn.Do("XADD", "event:"+gameID, "*", "payload", bytes))
+
+	err = conn.Send("MULTI")
 	if err != nil {
-		return err
+		return fmt.Errorf("Redis error initiating event post: %w", err)
 	}
+	err = conn.Send("ZADD", "history:"+gameID, "NX", event.GetID(), bytes)
+	if err != nil {
+		return fmt.Errorf("Redis error sending add event to history: %w", err)
+	}
+	err = conn.Send("PUBLISH", "history:"+gameID, bytes)
+	if err != nil {
+		return fmt.Errorf("Redis error ending publish event to history: %w", err)
+	}
+	results, err := redis.Ints(conn.Do("EXEC"))
+	if err != nil {
+		return fmt.Errorf("Redis error EXECing event post or parsing: %w", err)
+	}
+	if len(results) != 2 {
+		return fmt.Errorf("Redis error posting event, expected 2 results, got %v", results)
+	}
+	if results[0] != 1 {
+		log.Printf(
+			"Unexpected result from posting event: expected [1, #activeplrs], got %v",
+			results,
+		)
+	}
+
 	return nil
 }
 
