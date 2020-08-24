@@ -22,7 +22,7 @@ func tlsHeadersMiddleware(wrapped http.Handler) http.Handler {
 
 func headersMiddleware(wrapped http.Handler) http.Handler {
 	return http.HandlerFunc(func(response Response, request *Request) {
-		response.Header().Set("Cache-Control", "no-cache")
+		response.Header().Set("Cache-Control", "no-store")
 		response.Header().Set("X-Content-Type-Options", "nosniff")
 		wrapped.ServeHTTP(response, request)
 	})
