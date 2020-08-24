@@ -23,6 +23,21 @@ type Response = http.ResponseWriter
 
 var errExtraBody = errors.New("encountered additional data after end of JSON body")
 
+func requestRemoteAddr(request *Request) string {
+	if config.ClientIPHeader != "" {
+		res := request.Header.Get(config.ClientIPHeader)
+		if res != "" {
+			return res
+		}
+	}
+	return request.RemoteAddr
+}
+
+func cacheIndefinitely(request *Request, response Response) {
+	rawLog(request, "Caching for 4 hours")
+	response.Header().Set("Cache-Control", "max-age=14400")
+}
+
 func readBodyJSON(request *Request, value interface{}) error {
 	decoder := json.NewDecoder(request.Body)
 	decoder.DisallowUnknownFields()
@@ -45,7 +60,7 @@ func logRequest(request *Request, values ...string) {
 	if config.IsProduction {
 		rawLog(request, fmt.Sprintf(
 			"<< %v %v %v %v",
-			request.RemoteAddr, request.Proto, request.Method, request.URL,
+			requestRemoteAddr(request), request.Proto, request.Method, request.URL,
 		))
 	} else {
 		rawLog(request, fmt.Sprintf("<< %v %v",

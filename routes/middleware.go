@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"github.com/gomodule/redigo/redis"
-	"log"
 	"math/rand"
 	"net/http"
 	"runtime/debug"
@@ -58,13 +57,14 @@ func requestIDMiddleware(wrapped http.Handler) http.Handler {
 
 func localhostOnlyMiddleware(wrapped http.Handler) http.Handler {
 	return http.HandlerFunc(func(response Response, request *Request) {
-		remoteAddr := strings.Split(request.RemoteAddr, ":")[0]
+		// Not sure if this should just be remote addr.
+		remoteAddr := strings.Split(requestRemoteAddr(request), ":")[0]
 		allowed := remoteAddr == "localhost" || remoteAddr == "127.0.0.1"
 		message := "disallowed"
 		if allowed {
 			message = "allowed"
 		}
-		logf(request, "localhostOnly: %v %v", request.RemoteAddr, message)
+		logf(request, "localhostOnly: %v %v", remoteAddr, message)
 		if !allowed {
 			httpNotFound(response, request, "Not found")
 			return
@@ -99,7 +99,7 @@ func rateLimitedMiddleware(wrapped http.Handler) http.Handler {
 
 		// Taken from https://redis.io/commands/incr#pattern-rate-limiter-1
 
-		remoteAddr := strings.Split(request.RemoteAddr, ":")[0]
+		remoteAddr := strings.Split(requestRemoteAddr(request), ":")[0]
 
 		ts := time.Now().Unix()
 		rateLimitKey := fmt.Sprintf("ratelimit:%v:%v", remoteAddr, ts-ts%10)

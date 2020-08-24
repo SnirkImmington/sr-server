@@ -6,7 +6,6 @@ import (
 	"log"
 	"os"
 	"sr/config"
-	"strings"
 	"time"
 )
 
@@ -33,6 +32,8 @@ func CloseRedis(conn redis.Conn) {
 	}
 }
 
+// SetupRedis adds the game names from the config to Redis
+// and sets up Redis logging if enabled.
 func SetupRedis() {
 	if config.RedisDebug {
 		redisLogger = log.New(os.Stdout, "", log.Ltime|log.Lshortfile)
@@ -43,14 +44,12 @@ func SetupRedis() {
 
 	// Initialize games
 
-	gameNames := strings.Split(config.HardcodedGameNames, ",")
-
-	for _, game := range gameNames {
+	for _, game := range config.HardcodedGameNames {
 		_, err := conn.Do("hmset", "game:"+game, "event_id", 0)
 		if err != nil {
 			panic(fmt.Sprintf("Unable to hardcode games: ", err))
 		}
 	}
 
-	log.Print("Registered ", len(gameNames), " hardcoded game IDs.")
+	log.Print("Registered ", len(config.HardcodedGameNames), " hardcoded game IDs.")
 }

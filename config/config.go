@@ -46,6 +46,10 @@ var (
 	// Alternatively, an HTTPS server may be used.
 	// If used on production, ReverseProxied must be set to true.
 	PublishHTTP = readString("PUBLISH_HTTP", ":3001")
+	// ClientIPHeader sets a header to use for client IP addresses instead
+	// of just using the request's RemoteAddr. If the header is not found,
+	// RemoteAddr is used.
+	ClientIPHeader = readString("CLIENT_IP_HEADER", "")
 	// ReverseProxied must be set to true if an HTTP API server is used on
 	// production. It is ignored otherwise.
 	ReverseProxied = readBool("REVERSE_PROXIED", false)
@@ -129,7 +133,7 @@ var (
 
 	// HardcodedGameNames is a comma-separated list of GameIDs which the server
 	// creates on startup.
-	HardcodedGameNames = readString("GAME_NAMES", "test1,test2")
+	HardcodedGameNames = readStringArray("GAME_NAMES", "test1,test2")
 	// RollBufferSize is the size of the channel buffer from the roll goroutine.
 	RollBufferSize = readInt("ROLL_BUFFER_SIZE", 200)
 	// MaxSingleRoll is the largest roll request the server will handle at once.
@@ -154,7 +158,9 @@ func readStringArray(name string, defaultValue string) []string {
 	} else {
 		val = defaultValue
 	}
-
+	if val == "" {
+		return []string{}
+	}
 	return strings.Split(val, ",")
 }
 
