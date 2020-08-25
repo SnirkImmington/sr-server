@@ -54,7 +54,7 @@ const EventTypeRerollFailures = "rerollFailures"
 // on a roll.
 type RerollFailuresEvent struct {
 	EventCore
-	PrevID float64 `json:"prevID"`
+	PrevID int64   `json:"prevID"`
 	Title  string  `json:"title"`
 	Rounds [][]int `json:"rounds"`
 }
@@ -87,22 +87,22 @@ func PlayerJoinEventCore(session *Session) EventCore {
 
 // EventCore is the basic values put into events.
 type EventCore struct {
-	ID         float64 `json:"id"`    // ID of the event
-	Type       string  `json:"ty"`    // Type of the event
-	PlayerID   UID     `json:"pID"`   // ID of the player who posted the event
-	PlayerName string  `json:"pName"` // Name of the player who posted the event
+	ID         int64  `json:"id"`    // ID of the event
+	Type       string `json:"ty"`    // Type of the event
+	PlayerID   UID    `json:"pID"`   // ID of the player who posted the event
+	PlayerName string `json:"pName"` // Name of the player who posted the event
 }
 
 // Event is the common interface of all events.
 type Event interface {
-	GetID() float64
+	GetID() int64
 	GetType() string
 	GetPlayerID() UID
 	GetPlayerName() string
 }
 
 // GetID returns the timestamp ID of the event.
-func (core *EventCore) GetID() float64 {
+func (core *EventCore) GetID() int64 {
 	return core.ID
 }
 
