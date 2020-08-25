@@ -235,7 +235,7 @@ func handleSubscription(response Response, request *Request) {
 		}
 		select {
 		case eventText := <-events:
-			logf(request, "Forwarding event %v", eventText)
+			logf(request, "Forwarding %v", eventText)
 			body := strings.SplitN(eventText, ":", 2)
 			if len(body) != 2 {
 				logf(request, "Unable to parse event '%v'", body)

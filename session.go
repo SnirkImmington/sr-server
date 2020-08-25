@@ -93,6 +93,7 @@ func MakeSession(gameID string, playerName string, playerID UID, persist bool, c
 }
 
 var errNilSession = errors.New("Nil sessionID requested")
+var errNoSessionData = errors.New("Unable to parse session from redis")
 
 // SessionExists returns whether the session exists in Redis.
 func SessionExists(sessionID string, conn redis.Conn) (bool, error) {
@@ -102,8 +103,6 @@ func SessionExists(sessionID string, conn redis.Conn) (bool, error) {
 	return redis.Bool(conn.Do("exists", "session:"+sessionID))
 }
 
-var errNoSessionData = errors.New("Unable to parse session from redis")
-
 // GetSessionByID retrieves a session from redis.
 func GetSessionByID(sessionID string, conn redis.Conn) (Session, error) {
 	if sessionID == "" {
@@ -112,7 +111,7 @@ func GetSessionByID(sessionID string, conn redis.Conn) (Session, error) {
 	var session Session
 	data, err := conn.Do("hgetall", "session:"+sessionID)
 	if err != nil {
-		return Session{}, fmt.Errorf("Redis error retrieving session data: %w", err)
+		return Session{}, fmt.Errorf("Redis error retrieving data for %v: %w", sessionID, err)
 	}
 	if data == nil || len(data.([]interface{})) == 0 {
 		return Session{}, errNoSessionData

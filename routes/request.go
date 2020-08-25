@@ -70,7 +70,7 @@ func logRequest(request *Request, values ...string) {
 }
 
 func logf(request *Request, format string, values ...interface{}) {
-	rawLog(request, format, values)
+	rawLog(request, format, values...)
 }
 
 func rawLog(request *Request, format string, values ...interface{}) {
@@ -86,5 +86,6 @@ func httpSuccess(response Response, request *Request, message ...interface{}) {
 	if len(message) == 0 {
 		message = []interface{}{"OK"}
 	}
-	rawLog(request, fmt.Sprintf(">> 200 %v", fmt.Sprint(message...)))
+	dur := displayRequestDuration(request.Context())
+	rawLog(request, fmt.Sprintf(">> 200 %v (%v)", fmt.Sprint(message...), dur))
 }
