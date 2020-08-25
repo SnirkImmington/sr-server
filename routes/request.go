@@ -70,12 +70,12 @@ func logRequest(request *Request, values ...string) {
 }
 
 func logf(request *Request, format string, values ...interface{}) {
-	message := fmt.Sprintf(format, values...)
-	rawLog(request, message)
+	rawLog(request, format, values)
 }
 
-func rawLog(request *Request, message string) {
-	id := requestID(request)
+func rawLog(request *Request, format string, values ...interface{}) {
+	id := requestID(request.Context())
+	message := fmt.Sprintf(format, values...)
 	err := log.Output(3, id+" "+message)
 	if err != nil {
 		log.Print(id, " [Output Error] ", message)

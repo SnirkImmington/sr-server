@@ -47,7 +47,8 @@ func redirectRouter() *mux.Router {
 		)
 		newURL := "https://" + config.TLSHostname + request.URL.String()
 		http.Redirect(response, request, newURL, http.StatusMovedPermanently)
-		logf(request, ">> 308 HTTPS %v", request.URL)
+		dur := displayRequestDuration(request.Context())
+		logf(request, ">> 308 %v (%v)", newURL, dur)
 	})
 	return router
 }
@@ -55,7 +56,8 @@ func redirectRouter() *mux.Router {
 func notFoundHandler(response Response, request *Request) {
 	logRequest(request)
 	http.Error(response, "Not Found", http.StatusNotFound)
-	logf(request, ">> 404 Not Found")
+	dur := displayRequestDuration(request.Context())
+	logf(request, ">> 404 Not Found (%v)", dur)
 }
 
 func makeCORSConfig() *cors.Cors {
