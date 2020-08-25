@@ -23,6 +23,7 @@ var restRouter = apiRouter()
 func BaseRouter() *mux.Router {
 	router := mux.NewRouter()
 	router.Use(
+		mux.MiddlewareFunc(requestContextMiddleware),
 		mux.MiddlewareFunc(recoveryMiddleware),
 		mux.MiddlewareFunc(rateLimitedMiddleware),
 	)
@@ -192,6 +193,5 @@ func makeServerFromRouter(router http.Handler) http.Server {
 		IdleTimeout:    time.Duration(config.IdleTimeoutSecs) * time.Second,
 		MaxHeaderBytes: config.MaxHeaderBytes,
 		Handler:        router,
-		ConnContext:    connContext,
 	}
 }

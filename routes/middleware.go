@@ -26,6 +26,15 @@ func headersMiddleware(wrapped http.Handler) http.Handler {
 	})
 }
 
+func requestContextMiddleware(wrapped http.Handler) http.Handler {
+	return http.HandlerFunc(func(response Response, request *Request) {
+		requestCtx := withConnectedNow(withRequestID(request.Context()))
+		requestWithID := request.WithContext(requestCtx)
+
+		wrapped.ServeHTTP(response, requestWithID)
+	})
+}
+
 func localhostOnlyMiddleware(wrapped http.Handler) http.Handler {
 	return http.HandlerFunc(func(response Response, request *Request) {
 		// Not sure if this should just be remote addr.
@@ -56,7 +65,8 @@ func recoveryMiddleware(wrapped http.Handler) http.Handler {
 				)
 				logf(request, string(debug.Stack()))
 				http.Error(response, "Internal Server Error", http.StatusInternalServerError)
-				logf(request, ">> 500 Internal Server Error")
+				dur := displayRequestDuration(request.Context())
+				logf(request, ">> 500 Internal Server Error (%v)", dur)
 			}
 		}()
 		wrapped.ServeHTTP(response, request)
@@ -95,7 +105,7 @@ func rateLimitedMiddleware(wrapped http.Handler) http.Handler {
 		httpInternalErrorIf(response, request, err)
 		err = conn.Send("expire", rateLimitKey, "15")
 		httpInternalErrorIf(response, request, err)
-		err = conn.Send("exec")
+		_, err = conn.Do("exec")
 		httpInternalErrorIf(response, request, err)
 
 		if !limited {

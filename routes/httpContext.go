@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
-	"net"
 	"time"
 )
 
@@ -25,7 +24,7 @@ func withRequestID(ctx context.Context) context.Context {
 func requestID(ctx context.Context) string {
 	val := ctx.Value(requestIDKey)
 	if val == nil {
-		log.Output(2, "Attempted to get request ID from missing context")
+		_ = log.Output(2, "Attempted to get request ID from missing context")
 		return "??"
 	}
 	return val.(string)
@@ -54,8 +53,4 @@ func displayRequestDuration(ctx context.Context) string {
 	const displayResolution = time.Duration(1) * time.Millisecond / 10
 	dur := time.Now().Sub(val.(time.Time))
 	return dur.Truncate(displayResolution).String()
-}
-
-func connContext(ctx context.Context, conn net.Conn) context.Context {
-	return withConnectedNow(withRequestID(ctx))
 }
