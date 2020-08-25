@@ -28,7 +28,7 @@ func ValidRerollType(ty string) bool {
    The PRNG is re-seeded using hardware randomness.
 */
 
-var rollsChan = make(chan int, config.RollBufferSize)
+var rollsChan chan int
 
 // FillRolls performs standard rolls for the given buffer.
 // Returns the number of hits obtained.
@@ -77,8 +77,8 @@ func RerollFailures(original []int) []int {
 
 // BeginGeneratingRolls starts the roll server and channel
 func BeginGeneratingRolls() {
+	rollsChan = make(chan int, config.RollBufferSize)
 	go func() {
-		log.Printf("Using PRNG roll seed source: %v", crypto.Reader)
 		for {
 			seedBytes := make([]byte, 8)
 			_, err := crypto.Read(seedBytes)
