@@ -12,7 +12,7 @@ const tsMultiplier = 1_000_000
 // It can be mirrored on the frontend via `new Date().valueOf()`.
 func TimestampNow() int64 {
 	nowNanos := time.Now().UnixNano()
-	nowMillis := nowNanos / tsMultiplier
+	nowMillis := (nowNanos - (nowNanos % tsMultiplier)) / tsMultiplier
 	return nowMillis
 }
 
