@@ -244,7 +244,7 @@ func VerifyConfig() {
 			log.Print("Warning: publishing HTTP server and HTTP redirect server.")
 		}
 	}
-	if (TLSAutocertDir == "") == (len(TLSCertFiles) == 0) {
+	if PublishHTTPS != "" && ((TLSAutocertDir == "") == (len(TLSCertFiles) == 0)) {
 		panic("Must set one of TLSAutocertDir and TLSCertFiles!")
 	}
 }
