@@ -4,6 +4,7 @@ import (
 	"github.com/gomodule/redigo/redis"
 )
 
+// GameExists returns whether the given game exists in Redis.
 func GameExists(gameID string, conn redis.Conn) (bool, error) {
 	return redis.Bool(conn.Do("exists", "game:"+gameID))
 }
@@ -36,13 +37,16 @@ func AddNewPlayerToKnownGame(
 	}
 
 	event := PlayerJoinEvent{
-		EventCore:  EventCore{Type: "playerJoin"},
-		PlayerID:   string(session.PlayerID),
-		PlayerName: session.PlayerName,
+		EventCore: EventCore{
+			ID:         NewEventID(),
+			Type:       EventTypePlayerJoin,
+			PlayerID:   session.PlayerID,
+			PlayerName: session.PlayerName,
+		},
 	}
-	newestEventID, err := PostEvent(session.GameID, event, conn)
+	err = PostEvent(session.GameID, &event, conn)
 	if err != nil {
 		return "", err
 	}
-	return newestEventID, nil
+	return "", nil
 }

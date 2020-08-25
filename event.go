@@ -77,9 +77,11 @@ func ValidEventID(id string) bool {
 // for events and "update:" for updates.
 // The given context is used for its cancellation function. Errors (such as being
 // canceled) are sent over the error channel.
-func SubscribeToGame(ctx context.Context, conn redis.Conn, gameID string) (<-chan string, <-chan error) {
+func SubscribeToGame(ctx context.Context, gameID string) (<-chan string, <-chan error) {
 	events := make(chan string)
 	errChan := make(chan error, 1)
+
+	conn := RedisPool.Get()
 
 	sub := redis.PubSubConn{Conn: conn}
 	if err := sub.Subscribe("history:"+gameID, "updates:"+gameID); err != nil {
@@ -89,14 +91,16 @@ func SubscribeToGame(ctx context.Context, conn redis.Conn, gameID string) (<-cha
 
 	go func() {
 		defer func() {
+			CloseRedis(conn)
 			close(events)
 			close(errChan)
 		}()
 		for {
 			select {
 			case <-ctx.Done():
-				errChan <- ctx.Err()
+				errChan <- fmt.Errorf("Received done from context: %w", ctx.Err())
 				return
+			default:
 			}
 			switch msg := sub.Receive().(type) {
 			case error:
@@ -128,7 +132,7 @@ func ReceiveEvents(gameID string, requestID string) (<-chan string, chan<- bool)
 		defer CloseRedis(conn)
 		sub := redis.PubSubConn{Conn: conn}
 		if err := sub.Subscribe("history:" + gameID); err != nil {
-			log.Printf("%vE Error subscribing to game history: %v", err)
+			log.Printf("%vE Early error subscribing to game history: %v", err)
 			return
 		}
 
