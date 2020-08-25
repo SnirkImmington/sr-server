@@ -1,10 +1,8 @@
 package routes
 
 import (
-	"context"
 	"fmt"
 	"github.com/gomodule/redigo/redis"
-	"math/rand"
 	"net/http"
 	"runtime/debug"
 	"sr"
@@ -25,33 +23,6 @@ func headersMiddleware(wrapped http.Handler) http.Handler {
 		response.Header().Set("Cache-Control", "no-store")
 		response.Header().Set("X-Content-Type-Options", "nosniff")
 		wrapped.ServeHTTP(response, request)
-	})
-}
-
-type requestIDKeyType int
-
-var requestIDKey requestIDKeyType
-
-func withRequestID(ctx context.Context) context.Context {
-	id := fmt.Sprintf("%02x", rand.Intn(256))
-	return context.WithValue(ctx, requestIDKey, id)
-}
-
-func requestID(request *Request) string {
-	val := request.Context().Value(requestIDKey)
-	if val == nil {
-		return "??"
-	}
-	return val.(string)
-}
-
-func requestIDMiddleware(wrapped http.Handler) http.Handler {
-	return http.HandlerFunc(func(response Response, request *Request) {
-		requestCtx := request.Context()
-		requestCtx = withRequestID(requestCtx)
-		requestWithID := request.WithContext(requestCtx)
-
-		wrapped.ServeHTTP(response, requestWithID)
 	})
 }
 
