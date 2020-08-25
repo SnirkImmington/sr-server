@@ -1,5 +1,14 @@
 package sr
 
+import (
+	"encoding/json"
+	"fmt"
+)
+
+//
+// Roll
+//
+
 // EventTypeRoll is the type of `RollEvent`s.
 const EventTypeRoll = "roll"
 
@@ -9,6 +18,15 @@ type RollEvent struct {
 	Title string `json:"title"`
 	Roll  []int  `json:"roll"`
 }
+
+// RollEventCore makes the EventCore of a RollEvent.
+func RollEventCore(session *Session) EventCore {
+	return MakeEventCore(EventTypeRoll, session)
+}
+
+//
+// Edge Roll
+//
 
 // EventTypeEdgeRoll is the type of `EdgeRollEvent`s.
 const EventTypeEdgeRoll = "edgeRoll"
@@ -20,6 +38,15 @@ type EdgeRollEvent struct {
 	Rounds [][]int `json:"rounds"`
 }
 
+// EdgeRollEventCore makes the EventCore of an EdgeRollEvent.
+func EdgeRollEventCore(session *Session) EventCore {
+	return MakeEventCore("edgeRoll", session)
+}
+
+//
+// Reroll Failures
+//
+
 // EventTypeRerollFailures is the type of `RerollFailuresEvent`.
 const EventTypeRerollFailures = "rerollFailures"
 
@@ -27,9 +54,19 @@ const EventTypeRerollFailures = "rerollFailures"
 // on a roll.
 type RerollFailuresEvent struct {
 	EventCore
+	PrevID float64 `json:"prevID"`
 	Title  string  `json:"title"`
 	Rounds [][]int `json:"rounds"`
 }
+
+// RerollFailuresEventCore makes the EventCore of a RerollFailuresEvent.
+func RerollFailuresEventCore(session *Session) EventCore {
+	return MakeEventCore(EventTypeRerollFailures, session)
+}
+
+//
+// Player Join
+//
 
 // EventTypePlayerJoin is the type of `PlayerJoinEvent`.
 const EventTypePlayerJoin = "playerJoin"
@@ -37,6 +74,11 @@ const EventTypePlayerJoin = "playerJoin"
 // PlayerJoinEvent is triggered when a new player joins a game.
 type PlayerJoinEvent struct {
 	EventCore
+}
+
+// PlayerJoinEventCore makes the EventCore of a PlayerJoinEvent.
+func PlayerJoinEventCore(session *Session) EventCore {
+	return MakeEventCore(EventTypePlayerJoin, session)
 }
 
 //
@@ -78,4 +120,55 @@ func (core *EventCore) GetPlayerID() UID {
 // at the time that it happened.
 func (core *EventCore) GetPlayerName() string {
 	return core.PlayerName
+}
+
+// ParseEvent parses an event from JSON
+func ParseEvent(input []byte) (Event, error) {
+	var data map[string]interface{}
+	err := json.Unmarshal(input, &data)
+	if err != nil {
+		return nil, fmt.Errorf("Could not parse event object: %w", err)
+	}
+	tyVal, ok := data["ty"]
+	if !ok {
+		return nil, fmt.Errorf("Parsed input did not contain a ty field")
+	}
+	ty, ok := tyVal.(string)
+	if !ok {
+		return nil, fmt.Errorf("Error retrieving type info for event: got %v", data)
+	}
+
+	switch ty {
+	case EventTypeRoll:
+		var roll RollEvent
+		err = json.Unmarshal(input, &roll)
+		return &roll, err
+
+	case EventTypeEdgeRoll:
+		var edgeRoll EdgeRollEvent
+		err = json.Unmarshal(input, &edgeRoll)
+		return &edgeRoll, err
+
+	case EventTypeRerollFailures:
+		var rerollFailures RerollFailuresEvent
+		err = json.Unmarshal(input, &rerollFailures)
+		return &rerollFailures, err
+
+	case EventTypePlayerJoin:
+		var playerJoin PlayerJoinEvent
+		err = json.Unmarshal(input, &playerJoin)
+		return &playerJoin, err
+	default:
+		return nil, fmt.Errorf("Unknown roll type %v", ty)
+	}
+}
+
+// MakeEventCore produces an EventCore of the given type using the given session.
+func MakeEventCore(ty string, session *Session) EventCore {
+	return EventCore{
+		ID:         NewEventID(),
+		Type:       ty,
+		PlayerID:   session.PlayerID,
+		PlayerName: session.PlayerName,
+	}
 }
