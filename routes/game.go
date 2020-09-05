@@ -173,6 +173,8 @@ func collectRolls(in interface{}) ([]int, error) {
 // A user couldn't actually write "ty":"foo" in the field, though,
 // as it'd come back escaped.
 var eventParseRegex = regexp.MustCompile(`"ty":"([^"]+)"`)
+var eventIDParse = regexp.MustCompile(`"id":(\d+)`)
+var removeDecimal = regexp.MustCompile(`\.\d+`)
 
 var _ = gameRouter.HandleFunc("/subscription", handleSubscription).Methods("GET")
 
@@ -213,24 +215,18 @@ func handleSubscription(response Response, request *Request) {
 
 	// Begin writing events
 	logf(request, "Begin receiving events...")
-	defer func() {
-		stream.Close()
-		cancel()
-		dur := displayRequestDuration(subCtx)
-		logf(request, ">> -- Closed after %v", dur)
-	}()
 	for {
 		const pollInterval = time.Duration(2) * time.Second
 		ssePingInterval := time.Duration(config.SSEPingSecs) * time.Second
 		if !stream.IsOpen() {
 			logf(request, "Connection closed by remote host")
-			return
+			break
 		}
 		if time.Now().Sub(lastPing) >= ssePingInterval {
 			err = stream.WriteStringEvent("ping", "hi")
 			if err != nil {
 				logf(request, "Unable to write to stream: %v", err)
-				return
+				break
 			}
 		}
 		select {
@@ -239,20 +235,28 @@ func handleSubscription(response Response, request *Request) {
 			body := strings.SplitN(eventText, ":", 2)
 			if len(body) != 2 {
 				logf(request, "Unable to parse event '%v'", body)
-				return
+				break
 			}
 			// channel := body[0] ; message := body[1]
 			err = stream.WriteStringEvent(body[0], body[1])
 			if err != nil {
 				logf(request, "Unable to write event to stream: %v", err)
-				return
+				break
 			}
+			logf(request, "Forwarded.")
 		case err := <-errChan:
 			logf(request, "Error from subscription goroutine: %v", err)
+			break
 		case <-time.After(pollInterval):
 			// Need to recheck stream.IsOpen()
 			continue
 		}
+	}
+	cancel()
+	dur := removeDecimal.ReplaceAllString(displayRequestDuration(subCtx), "")
+	logf(request, ">> --- Subscription for %v closed (%v)", sess.LogInfo(), dur)
+	if stream.IsOpen() {
+		stream.Close()
 	}
 }
 
