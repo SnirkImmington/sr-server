@@ -131,6 +131,14 @@ var (
 
 	// Backend options
 
+	// EnableTasks enables the /tasks/ route, which includes administrative commands.
+	// It is recommended you run a separate sr-server instance with this enabled to
+	// perform administrative tasks.
+	EnableTasks = readBool("ENABLE_TASKS", true)
+	// TasksLocalhostOnly enables the localhost filter on the tasks route.
+	// Don't use this to conceal /tasks/! I cannot guarantee this always works!
+	TasksLocalhostOnly = readBool("TASKS_LOCALHOST_ONLY", true)
+
 	// HardcodedGameNames is a comma-separated list of GameIDs which the server
 	// creates on startup.
 	HardcodedGameNames = readStringArray("GAME_NAMES", "test1,test2")
