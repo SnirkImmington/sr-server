@@ -88,7 +88,8 @@ func rateLimitedMiddleware(wrapped http.Handler) http.Handler {
 		current, err := redis.Int(conn.Do("get", rateLimitKey))
 		if err == redis.ErrNil {
 			current = 0
-		} else {
+		} else if err != nil {
+			logf(request, "Unable to get rate limit key: %v", err)
 			httpInternalErrorIf(response, request, err)
 		}
 

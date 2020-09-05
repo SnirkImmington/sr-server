@@ -47,7 +47,7 @@ func SetupRedis() {
 	for _, game := range config.HardcodedGameNames {
 		_, err := conn.Do("hmset", "game:"+game, "event_id", 0)
 		if err != nil {
-			panic(fmt.Sprintf("Unable to hardcode games: ", err))
+			panic(fmt.Errorf("Unable to hardcode games: %w", err))
 		}
 	}
 
