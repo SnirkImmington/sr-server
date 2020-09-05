@@ -15,7 +15,7 @@ func httpDoErrorIf(message string, status int, response Response, request *Reque
 	if err != nil {
 		http.Error(response, message, status)
 		dur := displayRequestDuration(request.Context())
-		rawLog(request, ">> %v %v: %v (%v)", status, message, err.Error(), dur)
+		rawLog(2, request, ">> %v %v: %v (%v)", status, message, err.Error(), dur)
 		abortRequest()
 	}
 }
@@ -26,7 +26,7 @@ func httpDoMessage(template string, status int, response Response, request *Requ
 	}
 	http.Error(response, message, status)
 	dur := displayRequestDuration(request.Context())
-	rawLog(request, ">> %v %v (%v)", status, message, dur)
+	rawLog(2, request, ">> %v %v (%v)", status, message, dur)
 	abortRequest()
 }
 
