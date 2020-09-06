@@ -53,7 +53,7 @@ func handleMigrateEvents(response Response, request *Request) {
 		for ix, event := range events {
 			if ix == len(events)-1 {
 				// set id
-				startID = event["id"]
+				startID = event["id"].(string)
 			}
 			eventID := event["id"].(string)
 			eventTy := event["ty"].(string)
