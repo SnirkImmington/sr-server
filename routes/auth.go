@@ -32,7 +32,7 @@ func handleLogin(response Response, request *Request) {
 	persist := loginRequest.Persist
 	logf(request,
 		"Login request: %v joining %v (persist: %v)",
-		gameID, playerName, persist,
+		playerName, gameID, persist,
 	)
 
 	conn := sr.RedisPool.Get()
@@ -52,7 +52,7 @@ func handleLogin(response Response, request *Request) {
 	eventID, err := sr.AddNewPlayerToKnownGame(&session, conn)
 	httpInternalErrorIf(response, request, err)
 
-	logf(request, "Granted %s", session.LogInfo())
+	logf(request, "Authenticated: %s", session.LogInfo())
 
 	// Get game info
 	gameInfo, err := sr.GetGameInfo(session.GameID, conn)
