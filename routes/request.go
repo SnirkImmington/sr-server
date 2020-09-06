@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"sr/config"
+	"strings"
 	"time"
 )
 
@@ -31,6 +32,15 @@ func requestRemoteAddr(request *Request) string {
 		}
 	}
 	return request.RemoteAddr
+}
+
+func requestRemoteIP(request *Request) string {
+	addr := requestRemoteAddr(request)
+	portIx := strings.LastIndex(addr, ":")
+	if portIx == -1 {
+		return addr
+	}
+	return addr[:portIx]
 }
 
 func cacheIndefinitely(request *Request, response Response) {

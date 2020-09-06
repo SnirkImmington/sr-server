@@ -80,8 +80,7 @@ func rateLimitedMiddleware(wrapped http.Handler) http.Handler {
 
 		// Taken from https://redis.io/commands/incr#pattern-rate-limiter-1
 
-		remoteAddr := strings.Split(requestRemoteAddr(request), ":")[0]
-
+		remoteAddr := requestRemoteIP(request)
 		ts := time.Now().Unix()
 		rateLimitKey := fmt.Sprintf("ratelimit:%v:%v", remoteAddr, ts-ts%10)
 
