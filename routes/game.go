@@ -223,7 +223,7 @@ func handleSubscription(response Response, request *Request) {
 			break
 		}
 		if time.Now().Sub(lastPing) >= ssePingInterval {
-			err = stream.WriteStringEvent("ping", "hi")
+			err = stream.WriteStringEvent("", "hi")
 			if err != nil {
 				logf(request, "Unable to write to stream: %v", err)
 				break
