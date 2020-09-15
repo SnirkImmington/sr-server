@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"sr/config"
 	"time"
 )
 
@@ -17,7 +18,12 @@ const (
 )
 
 func withRequestID(ctx context.Context) context.Context {
-	id := fmt.Sprintf("%02x", rand.Intn(256))
+	var id string
+	if config.IsProduction {
+		id = fmt.Sprintf("%03x", rand.Intn(4096))
+	} else {
+		id = fmt.Sprintf("%02x", rand.Intn(256))
+	}
 	return context.WithValue(ctx, requestIDKey, id)
 }
 
