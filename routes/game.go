@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/gomodule/redigo/redis"
 	"regexp"
 	"sr"
 	"sr/config"
@@ -31,6 +30,33 @@ func handleInfo(response Response, request *Request) {
 	httpSuccess(
 		response, request,
 		info.ID, ": ", len(info.Players), " players",
+	)
+}
+
+type renameRequest struct {
+	Name string `json:"name"`
+}
+
+var _ = gameRouter.HandleFunc("/rename", handleRename).Methods("POST")
+
+func handleRename(response Response, request *Request) {
+	logRequest(request)
+	sess, conn, err := requestSession(request)
+	httpUnauthorizedIf(response, request, err)
+	defer sr.CloseRedis(conn)
+
+	var rename renameRequest
+	err = readBodyJSON(request, &rename)
+	httpInternalErrorIf(response, request, err)
+
+	update := sr.PlayerRenameUpdate(rename.Name)
+	err = sr.PostUpdate(sess.GameID, &update, conn)
+	httpInternalErrorIf(response, request, err)
+
+	httpSuccess(
+		response, request,
+		sess.PlayerID, " [",
+		sess.PlayerName, "] -> [", rename.Name, "]",
 	)
 }
 
@@ -102,7 +128,7 @@ func handleRoll(response Response, request *Request) {
 }
 
 type rerollRequest struct {
-	RollID string `json:"rollID"`
+	RollID int64  `json:"rollID"`
 	Type   string `json:"rerollType"`
 }
 
@@ -122,6 +148,9 @@ func handleReroll(response Response, request *Request) {
 		logf(request, "Got invalid roll type %v", reroll)
 		httpBadRequest(response, request, "Invalid reroll type")
 	}
+	logf(request, "Rerolling roll %v from %v",
+		reroll.RollID, sess.PlayerInfo(),
+	)
 
 	previousRollText, err := sr.EventByID(sess.GameID, reroll.RollID, conn)
 	httpInternalErrorIf(response, request, err)
@@ -131,13 +160,11 @@ func handleReroll(response Response, request *Request) {
 		logf(request, "Expecting to parse previous roll")
 		httpBadRequest(response, request, "Invalid previous roll")
 	}
-
-	previousDice, err := collectRolls(previousRoll.Roll)
-	httpInternalErrorIf(response, request, err)
+	logf(request, "Got previous roll %#v", previousRoll)
 
 	if reroll.Type == sr.RerollTypeRerollFailures {
-		newDice := sr.RerollFailures(previousDice)
-		rounds := [][]int{newDice, previousDice}
+		newDice := sr.RerollFailures(previousRoll.Roll)
+		rounds := [][]int{newDice, previousRoll.Roll}
 		rerollEvent := sr.RerollFailuresEvent{
 			EventCore: sr.RerollFailuresEventCore(&sess),
 			PrevID:    previousRoll.ID,
@@ -150,13 +177,15 @@ func handleReroll(response Response, request *Request) {
 			response, request,
 			"OK; reroll ", rerollEvent.ID, " posted",
 		)
+	} else {
+		httpBadRequest(response, request, "Invalid reroll type")
 	}
 }
 
 func collectRolls(in interface{}) ([]int, error) {
 	rolls, ok := in.([]interface{})
 	if !ok {
-		return nil, fmt.Errorf("Unable to parse %v as []interface{}", in)
+		return nil, fmt.Errorf("Unable to assert %v as []interface{}", in)
 	}
 	out := make([]int, len(rolls))
 	for i, val := range rolls {
@@ -169,16 +198,11 @@ func collectRolls(in interface{}) ([]int, error) {
 	return out, nil
 }
 
-// Hacky workaround for logs to show event type.
-// A user couldn't actually write "ty":"foo" in the field, though,
-// as it'd come back escaped.
-var eventParseRegex = regexp.MustCompile(`"ty":"([^"]+)"`)
-var eventIDParse = regexp.MustCompile(`"id":(\d+)`)
 var removeDecimal = regexp.MustCompile(`\.\d+`)
 
 var _ = gameRouter.HandleFunc("/subscription", handleSubscription).Methods("GET")
 
-// GET /subscription -> SSE :ping, event
+// GET /subscription?session= Last-Event-ID: -> SSE :ping, event
 func handleSubscription(response Response, request *Request) {
 	logRequest(request)
 	sess, conn, err := requestParamSession(request)
@@ -194,7 +218,7 @@ func handleSubscription(response Response, request *Request) {
 	// Subscribe to redis
 	logf(request, "Opening pub/sub for %v", sess.LogInfo())
 	subCtx, cancel := context.WithCancel(request.Context())
-	events, errChan := sr.SubscribeToGame(subCtx, sess.GameID)
+	messages, errChan := sr.SubscribeToGame(subCtx, sess.GameID)
 	logf(request, "Game subscription successful")
 	select {
 	case firstErr := <-errChan:
@@ -204,7 +228,7 @@ func handleSubscription(response Response, request *Request) {
 		// No error connecting
 	}
 
-	// Pause the session's month/15 min duration while streaming
+	// Restart the session's month/15 min duration while streaming
 	logf(request, "Unexpire session %v", sess.LogInfo())
 	_, err = sr.UnexpireSession(&sess, conn)
 	defer func() {
@@ -218,32 +242,35 @@ func handleSubscription(response Response, request *Request) {
 	for {
 		const pollInterval = time.Duration(2) * time.Second
 		ssePingInterval := time.Duration(config.SSEPingSecs) * time.Second
+		now := time.Now()
 		if !stream.IsOpen() {
 			logf(request, "Connection closed by remote host")
 			break
 		}
-		if time.Now().Sub(lastPing) >= ssePingInterval {
-			err = stream.WriteStringEvent("", "hi")
+		if now.Sub(lastPing) >= ssePingInterval {
+			err = stream.WriteStringEvent("", "")
 			if err != nil {
 				logf(request, "Unable to write to stream: %v", err)
 				break
 			}
+			lastPing = now
 		}
 		select {
-		case eventText := <-events:
-			logf(request, "Forwarding %v", eventText)
-			body := strings.SplitN(eventText, ":", 2)
+		case messageText := <-messages:
+			body := strings.SplitN(messageText, ":", 2)
 			if len(body) != 2 {
-				logf(request, "Unable to parse event '%v'", body)
+				logf(request, "Unable to parse message '%v'", body)
 				break
 			}
+			messageID := sr.ParseEventID(body[1])
+			messageTy := sr.ParseEventTy(body[1])
 			// channel := body[0] ; message := body[1]
-			err = stream.WriteStringEvent(body[0], body[1])
+			err = stream.WriteEventWithID(messageID, body[0], []byte(body[1]))
 			if err != nil {
-				logf(request, "Unable to write event to stream: %v", err)
+				logf(request, "Unable to write %s to stream: %v", messageText, err)
 				break
 			}
-			logf(request, "Forwarded.")
+			logf(request, "Sent %v %s %s (%s).", sess.LogInfo(), body[0], messageID, messageTy)
 		case err := <-errChan:
 			logf(request, "Error from subscription goroutine: %v", err)
 			break
@@ -261,9 +288,9 @@ func handleSubscription(response Response, request *Request) {
 }
 
 type eventRangeResponse struct {
-	Events []string `json:"events"`
-	LastID string   `json:"lastId"`
-	More   bool     `json:"more"`
+	Events []sr.Event `json:"events"`
+	LastID string     `json:"lastID"`
+	More   bool       `json:"more"`
 }
 
 var _ = gameRouter.HandleFunc("/events", handleEvents).Methods("GET")
@@ -284,61 +311,61 @@ func handleEvents(response Response, request *Request) {
 	oldest := request.FormValue("oldest")
 
 	// We want to be careful here because these IDs are user input!
-	//
 
 	if newest == "" {
-		newest = "-"
+		newest = "+inf"
 	} else if !sr.ValidEventID(newest) {
 		httpBadRequest(response, request, "Invalid newest ID")
 	}
 
 	if oldest == "" {
-		oldest = "+"
+		oldest = "-inf"
 	} else if !sr.ValidEventID(oldest) {
 		httpBadRequest(response, request, "Invalid oldest ID")
 	}
 
-	logf(request, "Retrieve events {%s : %s} for %s",
+	logf(request, "Retrieve events [%s ... %s] for %s",
 		oldest, newest, sess.LogInfo(),
 	)
 
-	// TODO move to events.go
-	eventsData, err := redis.Values(conn.Do(
-		"XREVRANGE", "event:"+sess.GameID, oldest, newest,
-		"COUNT", config.MaxEventRange,
-	))
+	events, err := sr.EventsBetween(
+		sess.GameID, newest, oldest, config.MaxEventRange, conn,
+	)
 	if err != nil {
-		logf(request, "Unable to list events from redis")
+		logf(request, "Unable to list events from redis: %v", err)
 		httpInternalErrorIf(response, request, err)
 	}
 
 	var eventRange eventRangeResponse
 	var message string
 
-	if len(eventsData) == 0 {
+	if len(events) == 0 {
 		eventRange = eventRangeResponse{
-			Events: []string{},
+			Events: []sr.Event{},
 			LastID: "",
 			More:   false,
 		}
 		message = "0 events"
 	} else {
-		events := []string{} // TODO
-		if err != nil {
-			logf(request, "Unable to parse events: %v", err)
-			httpInternalErrorIf(response, request, err)
-			return
+		parsed := make([]sr.Event, len(events))
+		for i, event := range events {
+			ev, err := sr.ParseEvent([]byte(event))
+			if err != nil {
+				err := fmt.Errorf("Error parsing event %v: %w", i, err)
+				httpInternalErrorIf(response, request, err)
+			}
+			parsed[i] = ev
 		}
-
-		firstID := "" // events[0]["id"].(string)
-		lastID := ""  // events[len(events)-1]["id"].(string)
+		firstID := parsed[0].GetID()
+		lastID := parsed[len(parsed)-1].GetID()
 
 		eventRange = eventRangeResponse{
-			Events: events,
+			Events: parsed,
+			LastID: string(lastID),
 			More:   len(events) == config.MaxEventRange,
 		}
 		message = fmt.Sprintf(
-			"%s : %s ; %v events",
+			"[%v ... %v] ; %v events",
 			firstID, lastID, len(events),
 		)
 	}

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"github.com/gomodule/redigo/redis"
 	"log"
-	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -47,16 +47,13 @@ func PostEvent(gameID string, event Event, conn redis.Conn) error {
 }
 
 // EventByID retrieves a single event from Redis via its ID.
-func EventByID(gameID string, eventID string, conn redis.Conn) (string, error) {
-	//data, err := conn.Do("XRANGE", "event:"+gameID, eventID, eventID)
-	//events, err := ScanEvents(data.([]interface{}))
+func EventByID(gameID string, eventID int64, conn redis.Conn) (string, error) {
 	events, err := redis.Strings(conn.Do(
-		"ZRANGEBYSCORE",
+		"ZREVRANGEBYSCORE",
 		"history:"+gameID,
 		eventID, eventID,
 		"LIMIT", "0", "1",
 	))
-
 	if err != nil {
 		return "", fmt.Errorf("Redis error finding event by ID: %w", err)
 	}
@@ -64,11 +61,35 @@ func EventByID(gameID string, eventID string, conn redis.Conn) (string, error) {
 	return events[0], nil
 }
 
-var idRegex = regexp.MustCompile(`^([\d]{13})-([\d]+)$`)
+// LatestEvents retrieves the latest count history events for the given game.
+func LatestEvents(gameID string, count int, conn redis.Conn) ([]string, error) {
+	return EventsOlderThan(gameID, "+inf", count, conn)
+}
+
+// EventsOlderThan retrieves a range of history events older than the given event.
+func EventsOlderThan(gameID string, newest string, count int, conn redis.Conn) ([]string, error) {
+	return EventsBetween(gameID, newest, "-inf", count, conn)
+}
+
+// EventsBetween returns up to count events between the given newest and oldest IDs.
+func EventsBetween(gameID string, newest string, oldest string, count int, conn redis.Conn) ([]string, error) {
+	events, err := redis.Strings(conn.Do(
+		"ZREVRANGEBYSCORE",
+		"history:"+gameID,
+		newest, "-inf",
+		"LIMIT", "0", count,
+	))
+	if err != nil {
+		return nil, fmt.Errorf("Redis error finding events older than %v: %w", newest, err)
+	}
+
+	return events, nil
+}
 
 // ValidEventID returns whether the non-empty-string id is valid.
 func ValidEventID(id string) bool {
-	return idRegex.MatchString(id)
+	_, err := strconv.ParseUint(id, 10, 64)
+	return err == nil
 }
 
 // SubscribeToGame starts a goroutine that reads from the given game's history
@@ -167,7 +188,7 @@ func ReceiveEvents(gameID string, requestID string) (<-chan string, chan<- bool)
 				return
 			}
 			for _, event := range events {
-				reStringed, err := json.Marshal(event)
+				_, err := json.Marshal(event)
 				if err != nil {
 					log.Printf(
 						"%vE Unable to write event back to string: %v",
@@ -175,7 +196,7 @@ func ReceiveEvents(gameID string, requestID string) (<-chan string, chan<- bool)
 					)
 					continue
 				}
-				eventsChan <- string(reStringed)
+				eventsChan <- event
 				// We don't log sending the event on this side of the channel.
 			}
 		}

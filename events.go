@@ -3,6 +3,7 @@ package sr
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 )
 
 //
@@ -171,4 +172,30 @@ func MakeEventCore(ty string, session *Session) EventCore {
 		PlayerID:   session.PlayerID,
 		PlayerName: session.PlayerName,
 	}
+}
+
+// Hacky workaround for logs to show event type.
+// A user couldn't actually write "ty":"foo" in the field, though,
+// as it'd come back escaped.
+var eventTyParse = regexp.MustCompile(`"ty":"([^"]+)"`)
+var eventIDParse = regexp.MustCompile(`"id":(\d+)`)
+
+// ParseEventTy gives the `ty` field for an event string.
+// This should only be used for logging.
+func ParseEventTy(event string) string {
+	match := eventTyParse.FindStringSubmatch(event)
+	if len(match) != 2 {
+		return "??"
+	}
+	return match[1]
+}
+
+// ParseEventID gives the `id` field for an event ID as a string.
+// This should only be used for logging.
+func ParseEventID(event string) string {
+	match := eventIDParse.FindStringSubmatch(event)
+	if len(match) != 2 {
+		return "????????"
+	}
+	return match[1]
 }
