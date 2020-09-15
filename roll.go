@@ -94,3 +94,20 @@ func BeginGeneratingRolls() {
 		}
 	}()
 }
+
+func ConvertRolls(in []interface{}) []int {
+	out := make([]int, len(in))
+	for i, val := range in {
+		out[i] = int(val.(float64))
+	}
+	return out
+}
+
+func ConvertRounds(in []interface{}) [][]int {
+	out := make([][]int, len(in))
+	for i, val := range in {
+		array := ConvertRolls(val.([]interface{}))
+		out[i] = array
+	}
+	return out
+}

@@ -4,6 +4,7 @@ import (
 	rand "crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"strings"
 )
 
 // UID is the base type of random IDs used in Shadowroller.
@@ -38,4 +39,10 @@ func encodeBytes(size uint) string {
 // MarshalJSON writes the UID as a string.
 func (uid UID) MarshalJSON() ([]byte, error) {
 	return json.Marshal(string(uid))
+}
+
+// URLSafeBase64 replaces older Base64 IDs with URL-safe versions
+func URLSafeBase64(id string) string {
+	out := strings.ReplaceAll(id, "+", "-")
+	return strings.ReplaceAll(out, "/", "_")
 }

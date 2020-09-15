@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-var tasksRouter = restRouter.PathPrefix("/tasks").Subrouter()
+var tasksRouter = restRouter.PathPrefix("/task").Subrouter()
 
 var _ = tasksRouter.HandleFunc("/migrate-events", handleMigrateEvents)
 
@@ -18,8 +18,8 @@ type EventOut map[string]interface{}
 
 func handleMigrateEvents(response Response, request *Request) {
 	logRequest(request)
-	endID := "+"
-	startID := "-"
+	newestID := "+"
+	oldestID := "-"
 	batchSize := 50
 
 	conn := sr.RedisPool.Get()
@@ -30,10 +30,13 @@ func handleMigrateEvents(response Response, request *Request) {
 		httpBadRequest(response, request, "Invalid game ID")
 	}
 
+	eventCount := 0
+	batch := 1
 	for {
+		logf(request, "Retrieving batch %v [%v ... %v] (%v)", batch, newestID, oldestID, batchSize)
 		eventsData, err := redis.Values(conn.Do(
 			"XREVRANGE", "event:"+gameID,
-			endID, startID, "COUNT", batchSize,
+			newestID, oldestID, "COUNT", batchSize,
 		))
 		if err != nil {
 			logf(request, "Error retrieving events: %v", err)
@@ -49,40 +52,51 @@ func handleMigrateEvents(response Response, request *Request) {
 			logf(request, "Unable to parse events: %v", err)
 			httpInternalErrorIf(response, request, err)
 		}
+		if events[0]["id"].(string) == newestID {
+			events = events[1:]
+		}
+		if len(events) == 0 {
+			batch--
+			break
+		}
 
 		for ix, event := range events {
 			if ix == len(events)-1 {
 				// set id
-				startID = event["id"].(string)
+				logf(request, "Resetting newest ID to %v", event["id"])
+				newestID = event["id"].(string)
 			}
 			eventID := event["id"].(string)
 			eventTy := event["ty"].(string)
-			logf(request, "Processing %v event %v", eventID, eventTy)
+			playerID := sr.URLSafeBase64(event["pID"].(string))
+			logf(request, "Processing %v event %v", eventTy, eventID)
 
 			newID, err := strconv.Atoi(strings.SplitN(eventID, "-", 2)[0])
 			httpInternalErrorIf(response, request, err)
-			logf(request, "-> new ID %v", newID)
-
 			core := sr.EventCore{
 				ID:         int64(newID),
 				Type:       eventTy,
-				PlayerID:   sr.UID(event["pID"].(string)),
+				PlayerID:   sr.UID(playerID),
 				PlayerName: event["pName"].(string),
 			}
 
 			var out sr.Event
 			switch eventTy {
 			case sr.EventTypeRoll:
+				title := ""
+				if strTitle, ok := event["title"].(string); ok {
+					title = strTitle
+				}
 				out = &sr.RollEvent{
 					EventCore: core,
-					Title:     event["title"].(string),
-					Roll:      event["roll"].([]int),
+					Title:     title,
+					Roll:      sr.ConvertRolls(event["roll"].([]interface{})),
 				}
 			case sr.EventTypeEdgeRoll:
 				out = &sr.EdgeRollEvent{
 					EventCore: core,
 					Title:     event["title"].(string),
-					Rounds:    event["rounds"].([][]int),
+					Rounds:    sr.ConvertRounds(event["rounds"].([]interface{})),
 				}
 			case sr.EventTypeRerollFailures:
 				prevID, err := strconv.Atoi(strings.SplitN(event["prevID"].(string), "-", 2)[0])
@@ -91,7 +105,7 @@ func handleMigrateEvents(response Response, request *Request) {
 					EventCore: core,
 					PrevID:    int64(prevID),
 					Title:     event["title"].(string),
-					Rounds:    event["rounds"].([][]int),
+					Rounds:    sr.ConvertRounds(event["rounds"].([]interface{})),
 				}
 			case sr.EventTypePlayerJoin:
 				out = &sr.PlayerJoinEvent{
@@ -100,13 +114,20 @@ func handleMigrateEvents(response Response, request *Request) {
 			default:
 				httpInternalError(response, request, fmt.Sprintf("Found event %v with invalid type %v", newID, eventTy))
 			}
+			eventCount++
 
 			jsonEvent, err := json.Marshal(out)
 			httpInternalErrorIf(response, request, err)
-			logf(request, "Got event %v", jsonEvent)
+			logf(request, "Got new event %v", string(jsonEvent))
+			err = sr.PostEvent(gameID, out, conn)
+			httpInternalErrorIf(response, request, err)
 		}
+		logf(request, "Batch %v complete", batch)
+		batch++
 	}
-	httpSuccess(response, request, "")
+	httpSuccess(response, request,
+		"Processed ", eventCount, " events in ", gameID, " (", batch, " batches)",
+	)
 }
 
 // scanEvents scans event strings from redis
