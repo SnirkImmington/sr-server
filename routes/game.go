@@ -49,7 +49,7 @@ func handleRename(response Response, request *Request) {
 	err = readBodyJSON(request, &rename)
 	httpInternalErrorIf(response, request, err)
 
-	update := sr.PlayerRenameUpdate(rename.Name)
+	update := sr.PlayerRenameUpdate(sess.PlayerID, rename.Name)
 	err = sr.PostUpdate(sess.GameID, &update, conn)
 	httpInternalErrorIf(response, request, err)
 
