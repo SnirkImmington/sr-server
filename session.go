@@ -24,12 +24,23 @@ import (
 //
 // Persistent sessions are set to expire with a longer-term TTL.
 type Session struct {
+	// Immutable fields: make a new Session
 	ID       UID    `redis:"-"`
 	GameID   string `redis:"gameID"`
 	PlayerID UID    `redis:"playerID"`
 	Persist  bool   `redis:"persist"`
-
+	// Mutable fields: keep the session up to date with the game/player
 	PlayerName string `redis:"playerName"`
+}
+
+// SetPlayerName sets the PlayerName on the session object as well as redis.
+func (s *Session) SetPlayerName(name string, conn redis.Conn) error {
+	_, err := conn.Do("HSET", s.redisKey(), "playerName", name)
+	if err != nil {
+		return err
+	}
+	s.PlayerName = name
+	return nil
 }
 
 // Type returns "persist" for persistent sessions and "temp" for temp sessions.
@@ -48,10 +59,26 @@ func (s *Session) LogInfo() string {
 	)
 }
 
+// PlayerInfo formats the less-technical player info for use in logging.
+func (s *Session) PlayerInfo() string {
+	return fmt.Sprintf(
+		"%v (%v in %v)",
+		s.PlayerID, s.PlayerName, s.GameID,
+	)
+}
+
+// SessionInfo formats the session's ID fields for use in logging.
+func (s *Session) SessionInfo() string {
+	return fmt.Sprintf(
+		"%v (%s %v in %v)",
+		s.ID, s.Type(), s.PlayerID, s.GameID,
+	)
+}
+
 func (s *Session) String() string {
 	return fmt.Sprintf(
-		"%v (%v) in %v (%s %v)",
-		s.PlayerName, s.PlayerID, s.GameID, s.ID, s.Type(),
+		"%v (%v) in %v (%v %v)",
+		s.PlayerName, s.PlayerID, s.GameID, s.Type(), s.ID,
 	)
 }
 
