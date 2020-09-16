@@ -44,8 +44,8 @@ func requestRemoteIP(request *Request) string {
 }
 
 func cacheIndefinitely(request *Request, response Response) {
-	rawLog(1, request, "Caching for 4 hours")
-	response.Header().Set("Cache-Control", "max-age=14400")
+	rawLog(1, request, "Caching for 24 hours")
+	response.Header().Set("Cache-Control", "max-age=86400")
 }
 
 func readBodyJSON(request *Request, value interface{}) error {
