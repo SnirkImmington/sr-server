@@ -69,7 +69,7 @@ func handleLogin(response Response, request *Request) {
 	err = writeBodyJSON(response, loggedIn)
 	httpInternalErrorIf(response, request, err)
 	httpSuccess(response, request,
-		session.PlayerID, " joined ", gameID,
+		session.Type(), " ", session.ID, " for ", session.PlayerID, " in ", gameID,
 	)
 }
 
