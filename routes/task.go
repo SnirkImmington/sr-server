@@ -90,7 +90,7 @@ func handleMigrateEvents(response Response, request *Request) {
 				out = &sr.RollEvent{
 					EventCore: core,
 					Title:     title,
-					Roll:      sr.ConvertRolls(event["roll"].([]interface{})),
+					Dice:      sr.ConvertRolls(event["roll"].([]interface{})),
 				}
 			case sr.EventTypeEdgeRoll:
 				out = &sr.EdgeRollEvent{

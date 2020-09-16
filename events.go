@@ -17,7 +17,7 @@ const EventTypeRoll = "roll"
 type RollEvent struct {
 	EventCore
 	Title string `json:"title"`
-	Roll  []int  `json:"roll"`
+	Dice  []int  `json:"dice"`
 }
 
 // RollEventCore makes the EventCore of a RollEvent.

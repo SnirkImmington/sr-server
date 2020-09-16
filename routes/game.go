@@ -114,7 +114,7 @@ func handleRoll(response Response, request *Request) {
 				PlayerID:   sess.PlayerID,
 				PlayerName: sess.PlayerName,
 			},
-			Roll:  rolls,
+			Dice:  rolls,
 			Title: roll.Title,
 		}
 	}
@@ -163,8 +163,8 @@ func handleReroll(response Response, request *Request) {
 	logf(request, "Got previous roll %#v", previousRoll)
 
 	if reroll.Type == sr.RerollTypeRerollFailures {
-		newDice := sr.RerollFailures(previousRoll.Roll)
-		rounds := [][]int{newDice, previousRoll.Roll}
+		newDice := sr.RerollFailures(previousRoll.Dice)
+		rounds := [][]int{newDice, previousRoll.Dice}
 		rerollEvent := sr.RerollFailuresEvent{
 			EventCore: sr.RerollFailuresEventCore(&sess),
 			PrevID:    previousRoll.ID,
