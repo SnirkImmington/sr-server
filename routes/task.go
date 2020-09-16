@@ -5,11 +5,23 @@ import (
 	"fmt"
 	"github.com/gomodule/redigo/redis"
 	"sr"
+	"sr/config"
 	"strconv"
 	"strings"
 )
 
-var tasksRouter = restRouter.PathPrefix("/task").Subrouter()
+// RegisterTasksViaConfig adds the /task route if it's enabled.
+// It must be called after config values are loaded.
+func RegisterTasksViaConfig() {
+	if config.EnableTasks {
+		restRouter.Handle("/task", tasksRouter)
+	}
+	if config.TasksLocalhostOnly {
+		tasksRouter.Use(localhostOnlyMiddleware)
+	}
+}
+
+var tasksRouter = apiRouter()
 
 var _ = tasksRouter.HandleFunc("/migrate-events", handleMigrateEvents)
 
