@@ -33,16 +33,6 @@ type Session struct {
 	PlayerName string `redis:"playerName"`
 }
 
-// SetPlayerName sets the PlayerName on the session object as well as redis.
-func (s *Session) SetPlayerName(name string, conn redis.Conn) error {
-	_, err := conn.Do("HSET", s.redisKey(), "playerName", name)
-	if err != nil {
-		return err
-	}
-	s.PlayerName = name
-	return nil
-}
-
 // Type returns "persist" for persistent sessions and "temp" for temp sessions.
 func (s *Session) Type() string {
 	if s.Persist {
@@ -120,7 +110,7 @@ func MakeSession(gameID string, playerName string, playerID UID, persist bool, c
 }
 
 var errNilSession = errors.New("Nil sessionID requested")
-var errNoSessionData = errors.New("Unable to parse session from redis")
+var errNoSessionData = errors.New("Session not found")
 
 // SessionExists returns whether the session exists in Redis.
 func SessionExists(sessionID string, conn redis.Conn) (bool, error) {
