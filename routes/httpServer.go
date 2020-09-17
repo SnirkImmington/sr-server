@@ -13,15 +13,6 @@ import (
 	"time"
 )
 
-func ApplyConfig() {
-	if !config.EnableTasks {
-
-	}
-	if config.TasksLocalhostOnly {
-		tasksRouter.Use(localhostOnlyMiddleware)
-	}
-}
-
 //
 // HTTP Routers
 //

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/gomodule/redigo/redis"
+	"net/http"
 	"sr"
 	"sr/config"
 	"strconv"
@@ -14,16 +15,17 @@ import (
 // It must be called after config values are loaded.
 func RegisterTasksViaConfig() {
 	if config.EnableTasks {
-		restRouter.Handle("/task", tasksRouter)
+		tasksRouter.NotFoundHandler = http.HandlerFunc(notFoundHandler)
+		restRouter.PathPrefix("/task").Handler(tasksRouter)
 	}
 	if config.TasksLocalhostOnly {
 		tasksRouter.Use(localhostOnlyMiddleware)
 	}
 }
 
-var tasksRouter = apiRouter()
+var tasksRouter = apiRouter().PathPrefix("/task").Subrouter()
 
-var _ = tasksRouter.HandleFunc("/migrate-events", handleMigrateEvents)
+var _ = tasksRouter.HandleFunc("/migrate-events", handleMigrateEvents).Methods("GET")
 
 // EventOut is the type of unmanaged JSON
 type EventOut map[string]interface{}
@@ -165,7 +167,7 @@ func scanEvents(eventsData []interface{}) ([]EventOut, error) {
 	return events, nil
 }
 
-var _ = tasksRouter.HandleFunc("/trim-players", handleTrimPlayers)
+var _ = tasksRouter.HandleFunc("/trim-players", handleTrimPlayers).Methods("GET")
 
 func handleTrimPlayers(response Response, request *Request) {
 	logRequest(request)
