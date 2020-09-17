@@ -38,18 +38,26 @@ func SetupRedis() {
 	if config.RedisDebug {
 		redisLogger = log.New(os.Stdout, "", log.Ltime|log.Lshortfile)
 	}
-
 	conn := RedisPool.Get()
 	defer CloseRedis(conn)
 
-	// Initialize games
-
-	for _, game := range config.HardcodedGameNames {
-		_, err := conn.Do("hmset", "game:"+game, "event_id", 0)
-		if err != nil {
-			panic(fmt.Errorf("Unable to hardcode games: %w", err))
-		}
+	gameKeys, err := redis.Strings(conn.Do("keys", "game:*"))
+	if err != nil {
+		panic(fmt.Errorf("Error reading existing games from redis: %w", err))
 	}
+	for i, gameKey := range gameKeys {
+		gameKeys[i] = gameKey[5:]
+	}
+	log.Print("Found games ", gameKeys)
 
-	log.Print("Registered ", len(config.HardcodedGameNames), " hardcoded game IDs.")
+	if len(gameKeys) < len(config.HardcodedGameNames) {
+		// Initialize games
+		for _, game := range config.HardcodedGameNames {
+			_, err := conn.Do("hmset", "game:"+game, "event_id", 0)
+			if err != nil {
+				panic(fmt.Errorf("Unable to hardcode games: %w", err))
+			}
+		}
+		log.Print("Registered ", len(config.HardcodedGameNames), " hardcoded game IDs.")
+	}
 }
