@@ -25,6 +25,69 @@ func RegisterTasksViaConfig() {
 
 var tasksRouter = apiRouter().PathPrefix("/task").Subrouter()
 
+var _ = tasksRouter.HandleFunc("/create-game", handleCreateGame).Methods("GET")
+
+func handleCreateGame(response Response, request *Request) {
+	logRequest(request)
+	gameID := request.FormValue("gameID")
+	if gameID == "" {
+		httpBadRequest(response, request, "Invalid game ID")
+	}
+
+	conn := sr.RedisPool.Get()
+	defer sr.CloseRedis(conn)
+
+	if exists, err := sr.GameExists(gameID, conn); exists {
+		httpInternalErrorIf(response, request, err)
+		httpBadRequest(response, request, "Game already exists")
+	}
+
+	set, err := redis.Int(conn.Do(
+		"HSET", "game:"+gameID,
+		"created_at", sr.TimestampNow(),
+	))
+	httpInternalErrorIf(response, request, err)
+	if set != 1 {
+		httpInternalError(response, request,
+			fmt.Sprintf("Expected 1 new field to be updated, got %v", set),
+		)
+	}
+	httpSuccess(response, request,
+		"Game ", gameID, " created",
+	)
+}
+
+var _ = tasksRouter.HandleFunc("/delete-game", handleCreateGame).Methods("GET")
+
+func handleDeleteGame(response Response, request *Request) {
+	logRequest(request)
+	gameID := request.FormValue("gameID")
+	if gameID == "" {
+		httpBadRequest(response, request, "Invalid game ID")
+	}
+
+	conn := sr.RedisPool.Get()
+	defer sr.CloseRedis(conn)
+
+	if exists, err := sr.GameExists(gameID, conn); !exists {
+		httpInternalErrorIf(response, request, err)
+		httpBadRequest(response, request, "Game does not exist")
+	}
+
+	set, err := redis.Int(conn.Do(
+		"del", "game:"+gameID,
+	))
+	httpInternalErrorIf(response, request, err)
+	if set != 1 {
+		httpInternalError(response, request,
+			fmt.Sprintf("Expected 1 game to be deleted, got %v", set),
+		)
+	}
+	httpSuccess(response, request,
+		"Game ", gameID, " deleted",
+	)
+}
+
 var _ = tasksRouter.HandleFunc("/migrate-events", handleMigrateEvents).Methods("GET")
 
 // EventOut is the type of unmanaged JSON
