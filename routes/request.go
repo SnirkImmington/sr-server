@@ -68,9 +68,26 @@ func writeBodyJSON(response Response, value interface{}) error {
 
 func logRequest(request *Request, values ...string) {
 	if config.IsProduction {
+		extra := ""
+		if len(config.LogExtraHeaders) != 0 {
+			grabbed := make([]string, len(config.LogExtraHeaders))
+			for i, header := range config.LogExtraHeaders {
+				found := request.Header.Get(header)
+				if found != "" {
+					grabbed[i] = found
+				} else {
+					grabbed[i] = "??"
+				}
+			}
+			extra = fmt.Sprintf(" %v", grabbed)
+		}
 		rawLog(1, request, fmt.Sprintf(
-			"<< %v %v %v %v",
-			requestRemoteAddr(request), request.Proto, request.Method, request.URL,
+			"<< %v%v %v %v %v",
+			requestRemoteIP(request),
+			extra,
+			request.Proto,
+			request.Method,
+			request.URL,
 		))
 	} else {
 		rawLog(1, request, fmt.Sprintf("<< %v %v",

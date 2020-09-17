@@ -50,6 +50,8 @@ var (
 	// of just using the request's RemoteAddr. If the header is not found,
 	// RemoteAddr is used.
 	ClientIPHeader = readString("CLIENT_IP_HEADER", "")
+	// LogExtraHeaders allows for more headers to be logged with each request
+	LogExtraHeaders = readStringArray("LOG_EXTRA_HEADERS", "")
 	// ReverseProxied must be set to true if an HTTP API server is used on
 	// production. It is ignored otherwise.
 	ReverseProxied = readBool("REVERSE_PROXIED", false)
@@ -82,15 +84,6 @@ var (
 	// This is a full URL, useful for i.e. Github project sites.
 	// If unset, the root URL will not redirect.
 	FrontendAddress = readString("FRONTEND_ADDRESS", FrontendDomain)
-
-	// Keys
-	// In development, these are hardcoded to known values for testing.
-	// In production, these must point to keyfiles containing base64 encoded keys.
-
-	// HealthCheckSecretKey allows for sending debug info with health checks.
-	// If the contents of this key are passed to /health-check, debug info is sent.
-	// This is always done in development. Leave blank to disable in production.
-	HealthCheckSecretKey = readKeyFile("KEYFILE_HEALTHCHECK", "")
 
 	// Timeouts
 
@@ -131,12 +124,18 @@ var (
 
 	// Backend options
 
-	// EnableTasks enables the /tasks/ route, which includes administrative commands.
+	// HealthCheckSecretKey allows for sending debug info with health checks.
+	// If the contents of this key are passed to /health-check, debug info is sent.
+	// This is always done in development. Leave blank to disable in production.
+	HealthCheckSecretKey = readKeyFile("KEYFILE_HEALTHCHECK", "")
+
+	// EnableTasks enables the /task route, which includes administrative commands.
 	// It is recommended you run a separate sr-server instance with this enabled to
 	// perform administrative tasks.
 	EnableTasks = readBool("ENABLE_TASKS", true)
 	// TasksLocalhostOnly enables the localhost filter on the tasks route.
-	// Don't use this to conceal /tasks/! I cannot guarantee this always works!
+	// Don't use this to conceal /task from the internet! Shadowroller cannot guarantee
+	// you won't receive a request pretending to be from localhost.
 	TasksLocalhostOnly = readBool("TASKS_LOCALHOST_ONLY", true)
 
 	// HardcodedGameNames is a comma-separated list of GameIDs which the server
