@@ -132,7 +132,7 @@ var (
 	// EnableTasks enables the /task route, which includes administrative commands.
 	// It is recommended you run a separate sr-server instance with this enabled to
 	// perform administrative tasks.
-	EnableTasks = readBool("ENABLE_TASKS", true)
+	EnableTasks = readBool("ENABLE_TASKS", false)
 	// TasksLocalhostOnly enables the localhost filter on the tasks route.
 	// Don't use this to conceal /task from the internet! Shadowroller cannot guarantee
 	// you won't receive a request pretending to be from localhost.
@@ -236,6 +236,10 @@ func VerifyConfig() {
 		}
 		if len(HealthCheckSecretKey) != 0 && len(HealthCheckSecretKey) < 256 {
 			panic("HealthcheckSecretKey should be longer")
+		}
+	} else {
+		if !EnableTasks {
+			EnableTasks = true
 		}
 	}
 	if PublishRedirect == PublishHTTPS && PublishHTTPS != "" {
