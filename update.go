@@ -4,7 +4,26 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/gomodule/redigo/redis"
+	"regexp"
 )
+
+// EventRenameUpdate is posted when an event is renamed by a player.
+func EventRenameUpdate(eventID int64, newTitle string) Update {
+	return Update{
+		Type:  "event.title",
+		Key:   string(eventID),
+		Value: newTitle,
+	}
+}
+
+// EventDeleteUpdate is posted when an event is deleted by a player.
+func EventDeleteUpdate(eventID int64) Update {
+	return Update{
+		Type:  "event.delete",
+		Key:   string(eventID),
+		Value: nil,
+	}
+}
 
 // PlayerRenameUpdate is posted when a player is renamed
 func PlayerRenameUpdate(playerID UID, newName string) Update {
@@ -58,12 +77,22 @@ func (update *Update) UnmarshalJSON(input []byte) error {
 func PostUpdate(gameID string, update *Update, conn redis.Conn) error {
 	bytes, err := json.Marshal(update)
 	if err != nil {
-		return fmt.Errorf("Unable to marshal update to JSON: %w", err)
+		return fmt.Errorf("unable to marshal update to JSON: %w", err)
 	}
 
 	_, err = conn.Do("PUBLISH", "update:"+gameID, bytes)
 	if err != nil {
-		return fmt.Errorf("Unable to post update to Redis: %w", err)
+		return fmt.Errorf("unable to post update to Redis: %w", err)
 	}
 	return nil
+}
+
+var updateTyParse = regexp.MustCompile(`$\["([^"]+)`)
+
+func ParseUpdateTy(update string) string {
+	match := updateTyParse.FindStringSubmatch(update)
+	if len(match) != 2 {
+		return "??"
+	}
+	return match[1]
 }

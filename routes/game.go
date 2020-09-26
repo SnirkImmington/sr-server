@@ -60,6 +60,90 @@ func handleRename(response Response, request *Request) {
 	)
 }
 
+var _ = gameRouter.HandleFunc("/modify-roll", handleUpdateEvent).Methods("POST")
+
+type updateEventRequest struct {
+	ID   int64                  `json:"id"`
+	Diff map[string]interface{} `json:"diff"`
+}
+
+func handleUpdateEvent(response Response, request *Request) {
+	logRequest(request)
+	sess, conn, err := requestSession(request)
+	httpUnauthorizedIf(response, request, err)
+	defer sr.CloseRedis(conn)
+
+	var updateRequest updateEventRequest
+	err = readBodyJSON(request, &updateRequest)
+	httpInternalErrorIf(response, request, err)
+
+	logf(request,
+		"%v requests update %v", sess.PlayerInfo(), updateRequest,
+	)
+	eventText, err := sr.EventByID(sess.GameID, updateRequest.ID, conn)
+	httpBadRequestIf(response, request, err)
+
+	event, err := sr.ParseEvent([]byte(eventText))
+	httpBadRequestIf(response, request, err)
+
+	if event.GetPlayerID() != sess.PlayerID {
+		httpForbidden(response, request, "You may not delete this event.")
+	}
+	if event.GetType() == sr.EventTypePlayerJoin {
+		httpForbidden(response, request, "You may not delete this event.")
+	}
+
+	logf(request,
+		"%v updating %v %v", sess.PlayerInfo(), event.GetType(), event,
+	)
+	for key, value := range updateRequest.Diff {
+
+	}
+
+	httpSuccess(response, request, "Updated event ", event.GetID())
+}
+
+var _ = gameRouter.HandleFunc("/delete-roll", handleDeleteEvent).Methods("POST")
+
+type deleteEventRequest struct {
+	ID int64 `json:"id"`
+}
+
+func handleDeleteEvent(response Response, request *Request) {
+	logRequest(request)
+	sess, conn, err := requestSession(request)
+	httpUnauthorizedIf(response, request, err)
+	defer sr.CloseRedis(conn)
+
+	var delete deleteEventRequest
+	err = readBodyJSON(request, &delete)
+	httpInternalErrorIf(response, request, err)
+
+	logf(request,
+		"%v requests to delete %v", sess.PlayerInfo(), delete.ID,
+	)
+	eventText, err := sr.EventByID(sess.GameID, delete.ID, conn)
+	httpBadRequestIf(response, request, err)
+
+	event, err := sr.ParseEvent([]byte(eventText))
+	httpBadRequestIf(response, request, err)
+
+	if event.GetPlayerID() != sess.PlayerID {
+		httpForbidden(response, request, "You may not delete this event.")
+	}
+	if event.GetType() == sr.EventTypePlayerJoin {
+		httpForbidden(response, request, "You may not delete this event.")
+	}
+
+	logf(request,
+		"%v deleting %v %v", sess.PlayerInfo(), event.GetType(), event,
+	)
+	err = sr.DeleteEvent(sess.GameID, event.GetID(), conn)
+	httpInternalErrorIf(response, request, err)
+
+	httpSuccess(response, request, "Deleted event ", event.GetID())
+}
+
 type rollRequest struct {
 	Count int    `json:"count"`
 	Title string `json:"title"`
@@ -231,6 +315,7 @@ func handleSubscription(response Response, request *Request) {
 	// Restart the session's month/15 min duration while streaming
 	logf(request, "Unexpire session %v", sess.LogInfo())
 	_, err = sr.UnexpireSession(&sess, conn)
+	httpInternalErrorIf(response, request, err)
 	defer func() {
 		if _, err := sr.ExpireSession(&sess, conn); err != nil {
 			logf(request, "Error expiring session %v: %v", sess.LogInfo(), err)
@@ -239,9 +324,9 @@ func handleSubscription(response Response, request *Request) {
 
 	// Begin writing events
 	logf(request, "Begin receiving events...")
+	ssePingInterval := time.Duration(config.SSEPingSecs) * time.Second
 	for {
 		const pollInterval = time.Duration(2) * time.Second
-		ssePingInterval := time.Duration(config.SSEPingSecs) * time.Second
 		now := time.Now()
 		if !stream.IsOpen() {
 			logf(request, "Connection closed by remote host")
@@ -262,8 +347,16 @@ func handleSubscription(response Response, request *Request) {
 				logf(request, "Unable to parse message '%v'", body)
 				break
 			}
-			messageID := sr.ParseEventID(body[1])
-			messageTy := sr.ParseEventTy(body[1])
+			var messageID string
+			var messageTy string
+			if body[0] == "update" {
+				logf(request, "Send %v update %v", sess.LogInfo(), body[1])
+				messageID = string(sr.NewEventID())
+				messageTy = sr.ParseUpdateTy(body[1])
+			} else {
+				messageID = sr.ParseEventID(body[1])
+				messageTy = sr.ParseEventTy(body[1])
+			}
 			// channel := body[0] ; message := body[1]
 			err = stream.WriteEventWithID(messageID, body[0], []byte(body[1]))
 			if err != nil {
