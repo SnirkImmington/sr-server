@@ -80,7 +80,7 @@ func DeleteEvent(gameID string, eventID int64, conn redis.Conn) error {
 }
 
 // UpdateEvent replaces an event in the database and notifies players of the change.
-func UpdateEvent(gameID string, newEvent Event, update Update, conn redis.Conn) error {
+func UpdateEvent(gameID string, newEvent Event, update EventUpdate, conn redis.Conn) error {
 	eventID := newEvent.GetID()
 	eventBytes, err := json.Marshal(newEvent)
 	if err != nil {
@@ -140,9 +140,11 @@ func EventByID(gameID string, eventID int64, conn redis.Conn) (string, error) {
 		"LIMIT", "0", "1",
 	))
 	if err != nil {
-		return "", fmt.Errorf("Redis error finding event by ID: %w", err)
+		return "", fmt.Errorf("redis error finding event by ID: %w", err)
 	}
-
+	if len(events) == 0 {
+		return "", fmt.Errorf("no event %v found in %v", eventID, gameID)
+	}
 	return events[0], nil
 }
 
@@ -190,8 +192,8 @@ func SubscribeToGame(ctx context.Context, gameID string) (<-chan string, <-chan 
 	conn := RedisPool.Get()
 
 	sub := redis.PubSubConn{Conn: conn}
-	if err := sub.Subscribe("history:"+gameID, "updates:"+gameID); err != nil {
-		errChan <- fmt.Errorf("Unable to subscribe to update channels: %w", err)
+	if err := sub.Subscribe("history:"+gameID, "update:"+gameID); err != nil {
+		errChan <- fmt.Errorf("unable to subscribe to update channels: %w", err)
 		return events, errChan
 	}
 
@@ -204,13 +206,13 @@ func SubscribeToGame(ctx context.Context, gameID string) (<-chan string, <-chan 
 		for {
 			select {
 			case <-ctx.Done():
-				errChan <- fmt.Errorf("Received done from context: %w", ctx.Err())
+				errChan <- fmt.Errorf("received done from context: %w", ctx.Err())
 				return
 			default:
 			}
 			switch msg := sub.Receive().(type) {
 			case error:
-				errChan <- fmt.Errorf("Error from Redis Receive(): %w", msg)
+				errChan <- fmt.Errorf("error from Redis Receive(): %w", msg)
 				return
 			case redis.Message:
 				message := string(msg.Data)

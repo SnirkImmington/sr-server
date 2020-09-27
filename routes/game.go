@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"regexp"
 	"sr"
 	"sr/config"
@@ -49,9 +50,7 @@ func handleRename(response Response, request *Request) {
 	err = readBodyJSON(request, &rename)
 	httpInternalErrorIf(response, request, err)
 
-	update := sr.PlayerRenameUpdate(sess.PlayerID, rename.Name)
-	err = sr.PostUpdate(sess.GameID, &update, conn)
-	httpInternalErrorIf(response, request, err)
+	// No op
 
 	httpSuccess(
 		response, request,
@@ -87,18 +86,36 @@ func handleUpdateEvent(response Response, request *Request) {
 	httpBadRequestIf(response, request, err)
 
 	if event.GetPlayerID() != sess.PlayerID {
-		httpForbidden(response, request, "You may not delete this event.")
+		httpForbidden(response, request, "You may not update this event.")
 	}
 	if event.GetType() == sr.EventTypePlayerJoin {
-		httpForbidden(response, request, "You may not delete this event.")
+		httpForbidden(response, request, "You may not update this event.")
 	}
 
-	logf(request,
-		"%v updating %v %v", sess.PlayerInfo(), event.GetType(), event,
-	)
+	logf(request, "Event type %v found, updating", event.GetType())
+	update := sr.MakeEventDiffUpdate(event)
 	for key, value := range updateRequest.Diff {
-
+		switch key {
+		// Title: the player can set the event title.
+		case "title":
+			title, ok := value.(string)
+			if !ok {
+				httpBadRequest(response, request, "Event diff: title: expected string")
+			}
+			// Title is common to many events to be worth type switch
+			titleField := reflect.Indirect(reflect.ValueOf(event)).FieldByName("Title")
+			if !titleField.CanSet() {
+				httpInternalError(response, request, "Cannot set Title field")
+			}
+			titleField.SetString(title)
+			update.AddField("title", title)
+		}
 	}
+
+	logf(request, "Event %v diff %v", event.GetID(), update.Diff)
+
+	err = sr.UpdateEvent(sess.GameID, event, &update, conn)
+	httpInternalErrorIf(response, request, err)
 
 	httpSuccess(response, request, "Updated event ", event.GetID())
 }
@@ -329,13 +346,13 @@ func handleSubscription(response Response, request *Request) {
 		const pollInterval = time.Duration(2) * time.Second
 		now := time.Now()
 		if !stream.IsOpen() {
-			logf(request, "Connection closed by remote host")
+			logf(request, "== Connection closed by remote host")
 			break
 		}
 		if now.Sub(lastPing) >= ssePingInterval {
 			err = stream.WriteStringEvent("", "")
 			if err != nil {
-				logf(request, "Unable to write to stream: %v", err)
+				logf(request, "== Unable to write to stream: %v", err)
 				break
 			}
 			lastPing = now
@@ -344,18 +361,20 @@ func handleSubscription(response Response, request *Request) {
 		case messageText := <-messages:
 			body := strings.SplitN(messageText, ":", 2)
 			if len(body) != 2 {
-				logf(request, "Unable to parse message '%v'", body)
+				logf(request, "== Unable to parse message '%v'", body)
 				break
 			}
+			var updateLog string
 			var messageID string
-			var messageTy string
 			if body[0] == "update" {
-				logf(request, "Send %v update %v", sess.LogInfo(), body[1])
-				messageID = string(sr.NewEventID())
-				messageTy = sr.ParseUpdateTy(body[1])
+				messageID = fmt.Sprintf("%v", sr.NewEventID())
+				updateLog = fmt.Sprintf("update %v", body[1])
 			} else {
 				messageID = sr.ParseEventID(body[1])
-				messageTy = sr.ParseEventTy(body[1])
+				updateLog = fmt.Sprintf(
+					"event %v %v",
+					sr.ParseEventTy(body[1]), messageID,
+				)
 			}
 			// channel := body[0] ; message := body[1]
 			err = stream.WriteEventWithID(messageID, body[0], []byte(body[1]))
@@ -363,9 +382,9 @@ func handleSubscription(response Response, request *Request) {
 				logf(request, "Unable to write %s to stream: %v", messageText, err)
 				break
 			}
-			logf(request, "Sent %v %s %s (%s).", sess.LogInfo(), body[0], messageID, messageTy)
+			logf(request, "== Sent %v to %v", updateLog, sess.LogInfo())
 		case err := <-errChan:
-			logf(request, "Error from subscription goroutine: %v", err)
+			logf(request, "== Error from subscription goroutine: %v", err)
 			break
 		case <-time.After(pollInterval):
 			// Need to recheck stream.IsOpen()

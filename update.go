@@ -2,89 +2,64 @@ package sr
 
 import (
 	"encoding/json"
-	"fmt"
-	"github.com/gomodule/redigo/redis"
 	"regexp"
 )
 
 // EventRenameUpdate is posted when an event is renamed by a player.
-func EventRenameUpdate(eventID int64, newTitle string) Update {
-	return Update{
-		Type:  "event.title",
-		Key:   string(eventID),
-		Value: newTitle,
-	}
+func EventRenameUpdate(eventID int64, newTitle string) EventUpdate {
+	diff := make(map[string]interface{}, 1)
+	diff["title"] = newTitle
+	return &EventDiffUpdate{ID: eventID, Diff: diff}
 }
 
 // EventDeleteUpdate is posted when an event is deleted by a player.
-func EventDeleteUpdate(eventID int64) Update {
-	return Update{
-		Type:  "event.delete",
-		Key:   string(eventID),
-		Value: nil,
-	}
+func EventDeleteUpdate(eventID int64) EventUpdate {
+	return &EventDelUpdate{ID: eventID}
 }
 
-// PlayerRenameUpdate is posted when a player is renamed
-func PlayerRenameUpdate(playerID UID, newName string) Update {
-	return Update{
-		Type:  "player.name",
-		Key:   string(playerID),
-		Value: newName,
-	}
+// EventUpdate is the interface for updates to events
+type EventUpdate interface {
+	json.Marshaler
+
+	GetEventID() int64
 }
 
-// Update is the type of updates sent over SSE to update players of the state of the game.
-// Any change in state should be sent over an update, along with a corresponding event if
-// needed.
-type Update struct {
-	Type  string
-	Key   string
-	Value interface{}
+// EventDiffUpdate updates various fields on an event.
+type EventDiffUpdate struct {
+	ID   int64
+	Diff map[string]interface{}
+}
+
+func MakeEventDiffUpdate(event Event) EventDiffUpdate {
+	return EventDiffUpdate{ID: event.GetID(), Diff: make(map[string]interface{})}
+}
+
+func (update *EventDiffUpdate) GetEventID() int64 {
+	return update.ID
+}
+
+func (update *EventDiffUpdate) AddField(field string, value interface{}) {
+	update.Diff[field] = value
 }
 
 // MarshalJSON converts the update to JSON. They're formatted as a 3-element list.
-func (update *Update) MarshalJSON() ([]byte, error) {
-	fields := []interface{}{update.Type, update.Key, update.Value}
+func (update *EventDiffUpdate) MarshalJSON() ([]byte, error) {
+	fields := []interface{}{update.ID, update.Diff}
 	return json.Marshal(fields)
 }
 
-// UnmarshalJSON parses an update from JSON.
-func (update *Update) UnmarshalJSON(input []byte) error {
-	var fields []interface{}
-	err := json.Unmarshal(input, fields)
-	if err != nil {
-		return err
-	}
-	if len(fields) != 3 {
-		return fmt.Errorf("Expected [Ty, Key, Val], got %v", fields)
-	}
-	ty, ok := fields[0].(string)
-	if !ok {
-		return fmt.Errorf("Expected type string, got %v", fields[0])
-	}
-	key, ok := fields[1].(string)
-	if !ok {
-		return fmt.Errorf("Expected key string, got %v", fields[1])
-	}
-	update.Type = ty
-	update.Key = key
-	update.Value = fields[3]
-	return nil
+// EventDelUpdate is a specific update type for deleting events
+type EventDelUpdate struct {
+	ID int64
 }
 
-// PostUpdate posts an update to the given game.
-func PostUpdate(gameID string, update *Update, conn redis.Conn) error {
-	bytes, err := json.Marshal(update)
-	if err != nil {
-		return fmt.Errorf("unable to marshal update to JSON: %w", err)
-	}
+func (update *EventDelUpdate) GetEventID() int64 {
+	return update.ID
+}
 
-	_, err = conn.Do("PUBLISH", "update:"+gameID, bytes)
-	if err != nil {
-		return fmt.Errorf("unable to post update to Redis: %w", err)
-	}
-	return nil
+func (update *EventDelUpdate) MarshalJSON() ([]byte, error) {
+	fields := []interface{}{update.ID, "del"}
+	return json.Marshal(fields)
 }
 
 var updateTyParse = regexp.MustCompile(`$\["([^"]+)`)
