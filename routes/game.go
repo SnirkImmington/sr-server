@@ -93,6 +93,8 @@ func handleUpdateEvent(response Response, request *Request) {
 	}
 
 	logf(request, "Event type %v found, updating", event.GetType())
+	updateTime := sr.NewEventID()
+	event.SetEdit(updateTime)
 	update := sr.MakeEventDiffUpdate(event)
 	for key, value := range updateRequest.Diff {
 		switch key {
@@ -205,7 +207,7 @@ func handleRoll(response Response, request *Request) {
 	} else {
 		rolls := make([]int, roll.Count)
 		hits := sr.FillRolls(rolls)
-		logf(request, "%v: roll: %v (%v hits)",
+		logf(request, "%v rolls %v (%v hits)",
 			sess.LogInfo(), rolls, hits,
 		)
 		event = &sr.RollEvent{
@@ -261,22 +263,34 @@ func handleReroll(response Response, request *Request) {
 		logf(request, "Expecting to parse previous roll")
 		httpBadRequest(response, request, "Invalid previous roll")
 	}
-	logf(request, "Got previous roll %#v", previousRoll)
+	logf(request, "Got previous roll %v %v",
+		previousRoll.Title, previousRoll.Dice,
+	)
 
 	if reroll.Type == sr.RerollTypeRerollFailures {
-		newDice := sr.RerollFailures(previousRoll.Dice)
-		rounds := [][]int{newDice, previousRoll.Dice}
-		rerollEvent := sr.RerollFailuresEvent{
-			EventCore: sr.RerollFailuresEventCore(&sess),
-			PrevID:    previousRoll.ID,
-			Title:     previousRoll.Title,
-			Rounds:    rounds,
+		newRound := sr.RerollFailures(previousRoll.Dice)
+		if len(newRound) == 0 {
+			// Cannot reroll failures on all hits
+			httpBadRequest(response, request, "Invalid previous roll")
 		}
-		err = sr.PostEvent(sess.GameID, &rerollEvent, conn)
+		rerolled := sr.RerollFailuresEvent{
+			EventCore: sr.EventCore{
+				ID:         previousRoll.ID,
+				Edit:       sr.NewEventID(),
+				Type:       sr.EventTypeRerollFailures,
+				PlayerID:   previousRoll.PlayerID,
+				PlayerName: previousRoll.PlayerName,
+			},
+			PrevID: previousRoll.ID,
+			Title:  previousRoll.Title,
+			Rounds: [][]int{newRound, previousRoll.Dice},
+		}
+		update := sr.SecondChanceUpdate(&rerolled, newRound)
+		err = sr.UpdateEvent(sess.GameID, &rerolled, update, conn)
 		httpInternalErrorIf(response, request, err)
+
 		httpSuccess(
-			response, request,
-			"OK; reroll ", rerollEvent.ID, " posted",
+			response, request, "Rerolled ", rerolled.ID, newRound,
 		)
 	} else {
 		httpBadRequest(response, request, "Invalid reroll type")
@@ -401,7 +415,7 @@ func handleSubscription(response Response, request *Request) {
 
 type eventRangeResponse struct {
 	Events []sr.Event `json:"events"`
-	LastID string     `json:"lastID"`
+	LastID int64      `json:"lastID"`
 	More   bool       `json:"more"`
 }
 
@@ -454,7 +468,7 @@ func handleEvents(response Response, request *Request) {
 	if len(events) == 0 {
 		eventRange = eventRangeResponse{
 			Events: []sr.Event{},
-			LastID: "",
+			LastID: 0,
 			More:   false,
 		}
 		message = "0 events"
@@ -463,7 +477,7 @@ func handleEvents(response Response, request *Request) {
 		for i, event := range events {
 			ev, err := sr.ParseEvent([]byte(event))
 			if err != nil {
-				err := fmt.Errorf("Error parsing event %v: %w", i, err)
+				err := fmt.Errorf("error parsing event %v: %w", i, err)
 				httpInternalErrorIf(response, request, err)
 			}
 			parsed[i] = ev
@@ -473,7 +487,7 @@ func handleEvents(response Response, request *Request) {
 
 		eventRange = eventRangeResponse{
 			Events: parsed,
-			LastID: string(lastID),
+			LastID: lastID,
 			More:   len(events) == config.MaxEventRange,
 		}
 		message = fmt.Sprintf(

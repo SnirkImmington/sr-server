@@ -49,7 +49,13 @@ func PostEvent(gameID string, event Event, conn redis.Conn) error {
 
 // DeleteEvent removes an event from a game and updates the game's connected players.
 func DeleteEvent(gameID string, eventID int64, conn redis.Conn) error {
-	err := conn.Send("MULTI")
+	updateBytes, err := json.Marshal(EventDeleteUpdate(eventID))
+	if err != nil {
+		return fmt.Errorf("redis error marshalling event delete update: %w", err)
+	}
+
+	// MULTI: delete old event and publish update
+	err = conn.Send("MULTI")
 	if err != nil {
 		return fmt.Errorf("redis error initializing event delete: %w", err)
 	}
@@ -57,15 +63,12 @@ func DeleteEvent(gameID string, eventID int64, conn redis.Conn) error {
 	if err != nil {
 		return fmt.Errorf("redis error sending event delete: %w", err)
 	}
-	updateBytes, err := json.Marshal(EventDeleteUpdate(eventID))
-	if err != nil {
-		return fmt.Errorf("redis error marshalling event delete update: %w", err)
-	}
 	err = conn.Send("PUBLISH", "update:"+gameID, updateBytes)
 	if err != nil {
 		return fmt.Errorf("redis error sending event publish: %w", err)
 	}
 
+	// EXEC: [#deleted=1, #updated]
 	results, err := redis.Ints(conn.Do("EXEC"))
 	if err != nil {
 		return fmt.Errorf("redis error EXECing event post: %w", err)
@@ -114,7 +117,7 @@ func UpdateEvent(gameID string, newEvent Event, update EventUpdate, conn redis.C
 		return fmt.Errorf("redis error sending event publish: %w", err)
 	}
 
-	// Results: #deleted=1, #added=1, #players
+	// EXEC: [#deleted=1, #added=1, #players]
 	results, err := redis.Ints(conn.Do("EXEC"))
 	if err != nil {
 		return fmt.Errorf("redis error EXECing event post: %w", err)

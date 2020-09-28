@@ -6,10 +6,17 @@ import (
 )
 
 // EventRenameUpdate is posted when an event is renamed by a player.
-func EventRenameUpdate(eventID int64, newTitle string) EventUpdate {
-	diff := make(map[string]interface{}, 1)
-	diff["title"] = newTitle
-	return &EventDiffUpdate{ID: eventID, Diff: diff}
+func EventRenameUpdate(event Event, newTitle string) EventUpdate {
+	update := MakeEventDiffUpdate(event)
+	update.AddField("title", newTitle)
+	return &update
+}
+
+// SecondChanceUpdate is posted when a roll is rerolled
+func SecondChanceUpdate(event Event, round []int) EventUpdate {
+	update := MakeEventDiffUpdate(event)
+	update.AddField("reroll", round)
+	return &update
 }
 
 // EventDeleteUpdate is posted when an event is deleted by a player.
@@ -22,20 +29,30 @@ type EventUpdate interface {
 	json.Marshaler
 
 	GetEventID() int64
+	GetTime() int64
 }
 
 // EventDiffUpdate updates various fields on an event.
 type EventDiffUpdate struct {
 	ID   int64
+	Time int64
 	Diff map[string]interface{}
 }
 
 func MakeEventDiffUpdate(event Event) EventDiffUpdate {
-	return EventDiffUpdate{ID: event.GetID(), Diff: make(map[string]interface{})}
+	return EventDiffUpdate{
+		ID:   event.GetID(),
+		Time: event.GetEdit(),
+		Diff: make(map[string]interface{}),
+	}
 }
 
 func (update *EventDiffUpdate) GetEventID() int64 {
 	return update.ID
+}
+
+func (update *EventDiffUpdate) GetTime() int64 {
+	return update.Time
 }
 
 func (update *EventDiffUpdate) AddField(field string, value interface{}) {
@@ -44,7 +61,7 @@ func (update *EventDiffUpdate) AddField(field string, value interface{}) {
 
 // MarshalJSON converts the update to JSON. They're formatted as a 3-element list.
 func (update *EventDiffUpdate) MarshalJSON() ([]byte, error) {
-	fields := []interface{}{update.ID, update.Diff}
+	fields := []interface{}{update.ID, update.Time, update.Diff}
 	return json.Marshal(fields)
 }
 
@@ -57,8 +74,12 @@ func (update *EventDelUpdate) GetEventID() int64 {
 	return update.ID
 }
 
+func (update *EventDelUpdate) GetTime() int64 {
+	return 0
+}
+
 func (update *EventDelUpdate) MarshalJSON() ([]byte, error) {
-	fields := []interface{}{update.ID, "del"}
+	fields := []interface{}{update.ID, 0, "del"}
 	return json.Marshal(fields)
 }
 
