@@ -72,7 +72,7 @@ const EventTypeInitiativeRoll = "initiativeRoll"
 type InitiativeRollEvent struct {
 	EventCore
 	Title string `json:"title"`
-	Base  string `json:"base"`
+	Base  int    `json:"base"`
 	Dice  []int  `json:"dice"`
 }
 

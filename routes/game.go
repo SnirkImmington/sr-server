@@ -255,6 +255,9 @@ func handleRollInitiative(response Response, request *Request) {
 	if roll.Dice < 1 {
 		httpBadRequest(response, request, "Invalid dice count")
 	}
+	if roll.Base < 0 {
+		httpBadRequest(response, request, "Invalid initiative base")
+	}
 	if roll.Dice > 5 {
 		httpBadRequest(response, request, "Cannot roll more than 5 dice")
 	}
@@ -268,6 +271,7 @@ func handleRollInitiative(response Response, request *Request) {
 	event := &sr.InitiativeRollEvent{
 		EventCore: sr.InitiativeRollEventCore(&sess),
 		Title:     roll.Title,
+		Base:      roll.Base,
 		Dice:      dice,
 	}
 	err = sr.PostEvent(sess.GameID, event, conn)
