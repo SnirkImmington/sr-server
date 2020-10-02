@@ -49,7 +49,9 @@ var (
 	// ClientIPHeader sets a header to use for client IP addresses instead
 	// of just using the request's RemoteAddr. If the header is not found,
 	// RemoteAddr is used.
-	ClientIPHeader = readString("CLIENT_IP_HEADER", "")
+	ClientIPHeader = readString("CLIENT_IP_HEADER", "asdf")
+	// IPWhitelist contains the parsed array of
+	IPWhitelist = readString("IP_WHITELIST_FILE")
 	// LogExtraHeaders allows for more headers to be logged with each request
 	LogExtraHeaders = readStringArray("LOG_EXTRA_HEADERS", "")
 	// ReverseProxied must be set to true if an HTTP API server is used on
@@ -254,6 +256,9 @@ func VerifyConfig() {
 		} else if PublishHTTP != "" {
 			log.Print("Warning: publishing HTTP server and HTTP redirect server.")
 		}
+	}
+	if RequireClientIPHeader && ClientIPHeader == "" {
+		panic("Cannot require client IP header without specifying header name!")
 	}
 	if PublishHTTPS != "" && ((TLSAutocertDir == "") == (len(TLSCertFiles) == 0)) {
 		panic("Must set one of TLSAutocertDir and TLSCertFiles!")

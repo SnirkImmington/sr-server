@@ -22,11 +22,16 @@ var restRouter = apiRouter()
 // BaseRouter produces a router for the API
 func BaseRouter() *mux.Router {
 	router := mux.NewRouter()
+	// Add request IDs and recovery to all requests
 	router.Use(
 		mux.MiddlewareFunc(requestContextMiddleware),
 		mux.MiddlewareFunc(recoveryMiddleware),
-		mux.MiddlewareFunc(rateLimitedMiddleware),
 	)
+	// Add the require middleware before rate limiting
+	if config.RequireClientIPHeader {
+		router.Use(mux.MiddlewareFunc(requireClientIPMiddleware))
+	}
+	router.Use(mux.MiddlewareFunc(rateLimitedMiddleware))
 	if config.SlowResponsesDebug {
 		router.Use(mux.MiddlewareFunc(slowResponsesMiddleware))
 	}

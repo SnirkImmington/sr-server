@@ -35,6 +35,19 @@ func requestContextMiddleware(wrapped http.Handler) http.Handler {
 	})
 }
 
+func requireClientIPMiddleware(wrapped http.Handler) http.Handler {
+	return http.HandlerFunc(func(response Response, request *Request) {
+		if request.Header.Get(config.ClientIPHeader) == "" {
+			logf(request, "Dropped request from %v for %v",
+				request.RemoteAddr, request.URL,
+			)
+			return
+		}
+
+		wrapped.ServeHTTP(response, request)
+	})
+}
+
 func localhostOnlyMiddleware(wrapped http.Handler) http.Handler {
 	return http.HandlerFunc(func(response Response, request *Request) {
 		// Not sure if this should just be remote addr.
