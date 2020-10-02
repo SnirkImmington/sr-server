@@ -1,5 +1,7 @@
 # Shadowroller Server
 
+![Shadowroller server logs](https://user-images.githubusercontent.com/1468114/94967935-09da2f00-04ce-11eb-9b36-ce3b842abdda.png)
+
 This repository contains the backend code for running the server behind https://shadowroller.net which supports the "multiplayer" aspect of Shadowroller.
 
 If you'd like to hear more about the code, read on or check out [the architecture file](/architecture.org). Otherwise, skip to [Run it yourself](Run it yourself).
@@ -27,7 +29,6 @@ All data for `sr-server` is stored in Redis. This amounts to a `hash` for each g
 set for the events in a game (sorted by timestamp). Redis pub/sub channels are used to broadcast new events or changes to events to each client's SSE handler.
 
 Why use an in-memory key-value store for the job of a SQL or not database?
-
 I'm being pragmatic. Redis does allow for persistence, so we shouldn't lose more than ~30s of data, and **mostly** there just isn't enough
 being stored to warrant setting up a SQL database or migrating things over. I don't expect this to be the case forever but I don't
 want to get ahead of myself when there are features to write.
