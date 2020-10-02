@@ -4,7 +4,9 @@
 
 This repository contains the backend code for running the server behind https://shadowroller.net which supports the "multiplayer" aspect of Shadowroller.
 
-If you'd like to hear more about the code, read on or check out [the architecture file](/architecture.org). Otherwise, skip to [Run it yourself](Run it yourself).
+The frontend can be found at http://github.com/SnirkImmington/shadowroller. It's currently hosted by GitHub Pages, although this will change in the future.
+
+If you'd like to hear more about the code, read on or check out [the architecture file](/architecture.org). Otherwise, skip to "Run it yourself."
 
 ## Server concepts
 
