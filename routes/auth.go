@@ -36,7 +36,7 @@ func handleLogin(response Response, request *Request) {
 	)
 
 	conn := sr.RedisPool.Get()
-	defer sr.CloseRedis(conn)
+	defer closeRedis(request, conn)
 
 	// Check for permission to join (if game ID exists)
 	gameExists, err := sr.GameExists(gameID, conn)
@@ -91,7 +91,7 @@ func handleReauth(response Response, request *Request) {
 	)
 
 	conn := sr.RedisPool.Get()
-	defer sr.CloseRedis(conn)
+	defer closeRedis(request, conn)
 
 	session, err := sr.GetSessionByID(requestSession, conn)
 	httpUnauthorizedIf(response, request, err)
@@ -136,8 +136,8 @@ var _ = authRouter.HandleFunc("/logout", handleLogout).Methods("POST")
 func handleLogout(response Response, request *Request) {
 	logRequest(request)
 	sess, conn, err := requestSession(request)
+	defer closeRedis(request, conn)
 	httpUnauthorizedIf(response, request, err)
-	defer sr.CloseRedis(conn)
 
 	err = sr.RemoveSession(&sess, conn)
 	httpInternalErrorIf(response, request, err)

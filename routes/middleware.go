@@ -76,7 +76,7 @@ func recoveryMiddleware(wrapped http.Handler) http.Handler {
 func rateLimitedMiddleware(wrapped http.Handler) http.Handler {
 	return http.HandlerFunc(func(response Response, request *Request) {
 		conn := sr.RedisPool.Get()
-		defer sr.CloseRedis(conn)
+		defer closeRedis(request, conn)
 
 		// Taken from https://redis.io/commands/incr#pattern-rate-limiter-1
 

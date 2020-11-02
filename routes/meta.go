@@ -50,7 +50,7 @@ func handleHealthCheck(response Response, request *Request) {
 	logRequest(request)
 
 	conn := sr.RedisPool.Get()
-	defer sr.CloseRedis(conn)
+	defer closeRedis(request, conn)
 
 	ok, err := redis.Bool(conn.Do("exists", "auth_version"))
 	httpInternalErrorIf(response, request, err)

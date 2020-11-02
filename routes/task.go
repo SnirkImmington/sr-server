@@ -35,7 +35,7 @@ func handleCreateGame(response Response, request *Request) {
 	}
 
 	conn := sr.RedisPool.Get()
-	defer sr.CloseRedis(conn)
+	defer closeRedis(request, conn)
 
 	if exists, err := sr.GameExists(gameID, conn); exists {
 		httpInternalErrorIf(response, request, err)
@@ -67,7 +67,7 @@ func handleDeleteGame(response Response, request *Request) {
 	}
 
 	conn := sr.RedisPool.Get()
-	defer sr.CloseRedis(conn)
+	defer closeRedis(request, conn)
 
 	if exists, err := sr.GameExists(gameID, conn); !exists {
 		httpInternalErrorIf(response, request, err)
@@ -100,7 +100,7 @@ func handleMigrateEvents(response Response, request *Request) {
 	batchSize := 50
 
 	conn := sr.RedisPool.Get()
-	defer sr.CloseRedis(conn)
+	defer closeRedis(request, conn)
 
 	gameID := request.FormValue("gameID")
 	if gameID == "" {
@@ -235,8 +235,8 @@ var _ = tasksRouter.HandleFunc("/trim-players", handleTrimPlayers).Methods("GET"
 func handleTrimPlayers(response Response, request *Request) {
 	logRequest(request)
 	_, conn, err := requestSession(request)
+	defer closeRedis(request, conn)
 	httpUnauthorizedIf(response, request, err)
-	defer sr.CloseRedis(conn)
 
 	gameID := request.URL.Query().Get("gameID")
 	if gameID == "" {
