@@ -63,3 +63,4 @@ key/value change. Like events, they are sent to clients via Redis pub/sub.
 ** Update channel ~update:{gameID}~ channel
 - JSON-encoded upates are published by event handlers
 - Subscribed to by SSE subscription handler
+- General format is ~[TYPE, ID, INFO]~

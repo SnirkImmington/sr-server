@@ -5,6 +5,12 @@ import (
 	"regexp"
 )
 
+// UpdateTypeEvent is the "type" field that's set for event updates
+const UpdateTypeEvent = "evt"
+
+// UpdateTypePlayer is the "type" field that's set for player updates
+const UpdateTypePlayer = "plr"
+
 // EventRenameUpdate is posted when an event is renamed by a player.
 func EventRenameUpdate(event Event, newTitle string) EventUpdate {
 	update := MakeEventDiffUpdate(event)
@@ -61,7 +67,7 @@ func (update *EventDiffUpdate) AddField(field string, value interface{}) {
 
 // MarshalJSON converts the update to JSON. They're formatted as a 3-element list.
 func (update *EventDiffUpdate) MarshalJSON() ([]byte, error) {
-	fields := []interface{}{update.ID, update.Time, update.Diff}
+	fields := []interface{}{UpdateTypeEvent, update.ID, update.Diff, update.Time}
 	return json.Marshal(fields)
 }
 
@@ -79,7 +85,7 @@ func (update *EventDelUpdate) GetTime() int64 {
 }
 
 func (update *EventDelUpdate) MarshalJSON() ([]byte, error) {
-	fields := []interface{}{update.ID, 0, "del"}
+	fields := []interface{}{UpdateTypeEvent, update.ID, "del"}
 	return json.Marshal(fields)
 }
 
@@ -91,4 +97,28 @@ func ParseUpdateTy(update string) string {
 		return "??"
 	}
 	return match[1]
+}
+
+// CharDiffUpdate is an update when an attribute of a Char has been changed
+type PlayerDiffUpdate struct {
+	ID   UID
+	Diff map[string]interface{}
+}
+
+// MakeCharDiffUpdate produces a CharDiffUpdate for the given Char
+func MakePlayerDiffUpdateFor(player *Player) PlayerDiffUpdate {
+	return PlayerDiffUpdate{
+		ID:   player.ID,
+		Diff: make(map[string]interface{}),
+	}
+}
+
+func (update *PlayerDiffUpdate) AddField(field string, value interface{}) {
+	update.Diff[field] = value
+}
+
+// MarshalJSON converts the update to JSON. They're formatted as a 3-element list.
+func (update *PlayerDiffUpdate) MarshalJSON() ([]byte, error) {
+	fields := []interface{}{UpdateTypePlayer, update.ID, update.Diff}
+	return json.Marshal(fields)
 }
