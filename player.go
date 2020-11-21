@@ -13,11 +13,12 @@ import (
 type Player struct {
 	ID       UID    `redis:"-"`
 	Username string `redis:"uname"`
+	Name     string `redis:"name"`
 }
 
 func (p *Player) String() string {
 	return fmt.Sprintf(
-		"%v (%v)", p.ID, p.Username,
+		"%v (%v / %v)", p.ID, p.Username, p.Name,
 	)
 }
 
@@ -29,10 +30,11 @@ func (p *Player) redisKey() string {
 }
 
 // NewPlayer constructs a new Player object, giving it a UID
-func NewPlayer(username string) Player {
+func NewPlayer(username string, name string) Player {
 	return Player{
 		ID:       GenUID(),
 		Username: username,
+		Name:     name,
 	}
 }
 
@@ -90,7 +92,7 @@ func GetPlayerByUsername(username string, conn redis.Conn) (*Player, error) {
 		return nil, fmt.Errorf("empty username passed to GetPlayerByUsername")
 	}
 
-	playerID, err := redis.String(conn.Do("HGET", "players", username))
+	playerID, err := redis.String(conn.Do("HGET", "player_ids", username))
 	if err != nil {
 		return nil, fmt.Errorf("redis error checking `players` mapping: %w", err)
 	}
@@ -101,6 +103,7 @@ func GetPlayerByUsername(username string, conn redis.Conn) (*Player, error) {
 	return GetPlayerByID(playerID, conn)
 }
 
+/*
 // GetPlayerCharIDs returns the IDs of all the chars of a player
 func GetPlayerCharIDs(playerID UID, conn redis.Conn) ([]UID, error) {
 	ids, err := redis.Strings(conn.Do("SGETALL", "chars:"+string(playerID)))
@@ -155,6 +158,7 @@ func GetPlayerChars(playerID UID, conn redis.Conn) ([]Char, error) {
 	}
 	return found, nil
 }
+*/
 
 // CreatePlayer adds the given Player to the database
 func CreatePlayer(player *Player, conn redis.Conn) error {
