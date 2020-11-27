@@ -2,6 +2,7 @@ package routes
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/gomodule/redigo/redis"
 	"net/http"
@@ -85,6 +86,73 @@ func handleDeleteGame(response Response, request *Request) {
 	}
 	httpSuccess(response, request,
 		"Game ", gameID, " deleted",
+	)
+}
+
+var _ = tasksRouter.HandleFunc("/create-player", handleCreatePlayer).Methods("GET")
+
+func handleCreatePlayer(response Response, request *Request) {
+	logRequest(request)
+
+	conn := sr.RedisPool.Get()
+	defer closeRedis(request, conn)
+
+	username := request.FormValue("uname")
+	if username == "" {
+		httpBadRequest(response, request, "Username `uname` not specified")
+	}
+	name := request.FormValue("name")
+	if name == "" {
+		httpBadRequest(response, request, "Name `name` not specified")
+	}
+	id := sr.GenUID()
+	hue := sr.RandomPlayerHue()
+
+	player := sr.Player{
+		ID:       id,
+		Username: username,
+		Name:     name,
+		Hue:      hue,
+	}
+	logf(request, "Created player %v", player)
+
+	err := sr.CreatePlayer(&player, conn)
+	httpInternalErrorIf(response, request, err)
+	httpSuccess(response, request,
+		"Player ", player.Username, " created with ID ", player.ID,
+	)
+}
+
+var _ = tasksRouter.HandleFunc("/add-to-game", handleAddToGame).Methods("GET")
+
+func handleAddToGame(response Response, request *Request) {
+	logRequest(request)
+
+	username := request.FormValue("uname")
+	if username == "" {
+		httpBadRequest(response, request, "Username `uname` not specified")
+	}
+	gameID := request.FormValue("game")
+	if gameID == "" {
+		httpBadRequest(response, request, "GameID `game` not specified")
+	}
+
+	conn := sr.RedisPool.Get()
+	defer closeRedis(request, conn)
+
+	player, err := sr.GetPlayerByUsername(username, conn)
+	if errors.Is(err, sr.ErrPlayerNotFound) {
+		httpBadRequest(response, request,
+			fmt.Sprintf("Player with username %v not found", username),
+		)
+	}
+	httpInternalErrorIf(response, request, err)
+	logf(request, "Found player %v", player)
+
+	err = sr.AddPlayerToKnownGame(player, gameID, conn)
+	httpInternalErrorIf(response, request, err)
+	httpSuccess(response, request,
+		"Added ", player, " to ", gameID,
 	)
 }
 
