@@ -1,10 +1,15 @@
 package sr
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/gomodule/redigo/redis"
+	"math/rand"
 )
+
+// ErrPlayerNotFound means a player was not found.
+var ErrPlayerNotFound = errors.New("player not found")
 
 // Player is a user of Shadowroller.
 //
@@ -14,12 +19,32 @@ type Player struct {
 	ID       UID    `redis:"-"`
 	Username string `redis:"uname"`
 	Name     string `redis:"name"`
+	Hue      int    `redis:"hue"`
+}
+
+// PlayerInfo is data other players can see about a player.
+//
+// - `username` is not shown.
+// - `Sessions` is converted to `online`
+type PlayerInfo struct {
+	ID   UID    `json:"-"`
+	Name string `json:"name"`
+	Hue  int    `json:"hue"`
 }
 
 func (p *Player) String() string {
 	return fmt.Sprintf(
 		"%v (%v / %v)", p.ID, p.Username, p.Name,
 	)
+}
+
+// Info returns game-readable information about the player
+func (p *Player) Info() PlayerInfo {
+	return PlayerInfo{
+		ID:   p.ID,
+		Name: p.Name,
+		Hue:  p.Hue,
+	}
 }
 
 func (p *Player) redisKey() string {
@@ -35,6 +60,7 @@ func NewPlayer(username string, name string) Player {
 		ID:       GenUID(),
 		Username: username,
 		Name:     name,
+		Hue:      RandomPlayerHue(),
 	}
 }
 
@@ -85,6 +111,22 @@ func GetPlayerByID(playerID string, conn redis.Conn) (*Player, error) {
 	return &player, nil
 }
 
+func GetPlayerIDOf(username string, conn redis.Conn) (string, error) {
+	if username == "" {
+		return "", fmt.Errorf("empty username passed to GetPlayerIDOf")
+	}
+	playerID, err := redis.String(conn.Do("GET", "player_id:"+username))
+	if err != nil {
+		return "", fmt.Errorf(
+			"redis error getting player ID of %v: %w", username, err,
+		)
+	}
+	if playerID == "" {
+		return "", fmt.Errorf("player %v not found: %w", username, ErrPlayerNotFound)
+	}
+	return playerID, nil
+}
+
 // GetPlayerByUsername retrieves a player based on the username given.
 // Returns nil if no player with that username was found!
 func GetPlayerByUsername(username string, conn redis.Conn) (*Player, error) {
@@ -92,7 +134,7 @@ func GetPlayerByUsername(username string, conn redis.Conn) (*Player, error) {
 		return nil, fmt.Errorf("empty username passed to GetPlayerByUsername")
 	}
 
-	playerID, err := redis.String(conn.Do("HGET", "player_ids", username))
+	playerID, err := redis.String(conn.Do("GET", "player_id:"+username))
 	if err != nil {
 		return nil, fmt.Errorf("redis error checking `players` mapping: %w", err)
 	}
@@ -101,6 +143,11 @@ func GetPlayerByUsername(username string, conn redis.Conn) (*Player, error) {
 	}
 
 	return GetPlayerByID(playerID, conn)
+}
+
+// RandomPlayerHue creates a random hue value for a player
+func RandomPlayerHue() int {
+	return rand.Intn(360)
 }
 
 /*
@@ -186,6 +233,39 @@ func CreatePlayer(player *Player, conn redis.Conn) error {
 	// expected 1 update for player_ids, n updates for player fields
 	if len(data) != 2 || data[0] != 1 || data[1] <= 2 {
 		return fmt.Errorf("redis error with multi: expected [1, >1], got %v", data)
+	}
+	return nil
+}
+
+// UpdatePlayer updates a player in the database.
+// It does not allow for username updates
+func UpdatePlayer(gameID string, player *Player, update PlayerDiffUpdate, conn redis.Conn) error {
+	playerData := redis.Args{}.Add(player.redisKey()).AddFlat(player)
+	updateBytes, err := json.Marshal(update)
+	if err != nil {
+		return fmt.Errorf("unable to marshal update to JSON :%w", err)
+	}
+
+	// MULTI: update player, publish update
+	if err := conn.Send("MULTI"); err != nil {
+		return fmt.Errorf("redis error sending MULTI for player update: %w", err)
+	}
+	if err = conn.Send("HSET", playerData...); err != nil {
+		return fmt.Errorf("redis error sending HSET for player update: %w", err)
+	}
+	if err = conn.Send("PUBLISH", "update:"+gameID, updateBytes); err != nil {
+		return fmt.Errorf("redis error sending event publish: %w", err)
+	}
+	// EXEC: [#updated>0, #players]
+	results, err := redis.Ints(conn.Do("EXEC"))
+	if err != nil {
+		return fmt.Errorf("redis error sending EXEC: %w", err)
+	}
+	if len(results) != 2 {
+		return fmt.Errorf("redis error updating player, expected 2 results got %v", results)
+	}
+	if results[0] <= 0 {
+		return fmt.Errorf("redis error updating player, expected [1, *] got %v", results)
 	}
 	return nil
 }
