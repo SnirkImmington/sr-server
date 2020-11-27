@@ -1,17 +1,18 @@
 package routes
 
 import (
+	"errors"
 	"sr"
 )
 
 var authRouter = restRouter.PathPrefix("/auth").Subrouter()
 
 type loginResponse struct {
-	PlayerID   string      `json:"playerID"`
-	PlayerName string      `json:"playerName"`
-	GameInfo   sr.GameInfo `json:"game"`
-	Session    string      `json:"session"`
-	LastEvent  string      `json:"lastEvent"`
+	PlayerID   string          `json:"playerID"`
+	PlayerName string          `json:"playerName"`
+	GameInfo   *sr.OldGameInfo `json:"game"`
+	Session    string          `json:"session"`
+	LastEvent  string          `json:"lastEvent"`
 }
 
 // POST /auth/login { gameID, playerName } -> auth token, session token
@@ -55,7 +56,7 @@ func handleLogin(response Response, request *Request) {
 	logf(request, "Authenticated: %s", session.LogInfo())
 
 	// Get game info
-	gameInfo, err := sr.GetGameInfo(session.GameID, conn)
+	gameInfo, err := sr.GetOldGameInfo(session.GameID, conn)
 	httpInternalErrorIf(response, request, err)
 
 	// Response
@@ -70,6 +71,57 @@ func handleLogin(response Response, request *Request) {
 	httpInternalErrorIf(response, request, err)
 	httpSuccess(response, request,
 		session.Type(), " ", session.ID, " for ", session.PlayerID, " in ", gameID,
+	)
+}
+
+func newHandleLogin(response Response, request *Request) {
+	logRequest(request)
+	var login struct {
+		GameID   string `json:"gameID"`
+		Username string `json:"user"`
+		Persist  bool   `json:"persist"`
+	}
+	err := readBodyJSON(request, &login)
+	httpBadRequestIf(response, request, err)
+
+	status := "persist"
+	if !login.Persist {
+		status = "temp"
+	}
+	logf(request,
+		"Login request: %v to join %v %v",
+		login.Username, login.GameID, status,
+	)
+
+	conn := sr.RedisPool.Get()
+	defer closeRedis(request, conn)
+
+	gameInfo, playerID, err := sr.LogPlayerIn(login.GameID, login.Username, conn)
+	if errors.Is(err, sr.ErrPlayerNotFound) {
+		logf(request, "Login response: game %v not found", login.GameID)
+		httpForbiddenIf(response, request, err)
+	} else if errors.Is(err, sr.ErrGameNotFound) {
+		logf(request, "Login response: player %v not found", login.Username)
+		httpForbiddenIf(response, request, err)
+	} else if err != nil {
+		httpInternalErrorIf(response, request, err)
+	}
+	logf(request, "found %v in %v", playerID, login.GameID)
+
+	session, err := sr.NewPlayerSession(login.GameID, login.Username, login.Persist, conn)
+	httpInternalErrorIf(response, request, err)
+	logf(request, "Created session %v for %v", session.ID, playerID)
+	logf(request, "Got game info %v", gameInfo)
+
+	err = writeBodyJSON(response, loginResponse{
+		PlayerID: string(playerID),
+		//GameInfo: gameInfo, // TODO update
+		Session: string(session.ID),
+	})
+	httpInternalErrorIf(response, request, err)
+	httpSuccess(response, request,
+		session.Type(), " ", session.ID, " for ", session.PlayerID,
+		" in ", login.GameID,
 	)
 }
 
@@ -112,7 +164,7 @@ func handleReauth(response Response, request *Request) {
 
 	logf(request, "Confirmed %s", session.LogInfo())
 
-	gameInfo, err := sr.GetGameInfo(session.GameID, conn)
+	gameInfo, err := sr.GetOldGameInfo(session.GameID, conn)
 	httpInternalErrorIf(response, request, err)
 
 	reauthed := loginResponse{
@@ -126,6 +178,51 @@ func handleReauth(response Response, request *Request) {
 	httpInternalErrorIf(response, request, err)
 	httpSuccess(response, request,
 		session.PlayerID, " reauthed for ", session.GameID,
+	)
+}
+
+func newHandleReauth(response Response, request *Request) {
+	logRequest(request)
+	var reauth struct {
+		Session string `json:"session"`
+	}
+	err := readBodyJSON(request, &reauth)
+	httpBadRequestIf(response, request, err)
+	logf(request, "Relogin request for %v", reauth.Session)
+
+	conn := sr.RedisPool.Get()
+	defer closeRedis(request, conn)
+
+	sess, err := sr.GetSessionByID(reauth.Session, conn)
+	httpUnauthorizedIf(response, request, err)
+	logf(request, "Found session %v for player %v", sess.ID, sess.PlayerID)
+
+	// Confirm game still exists for the session
+	gameExists, err := sr.GameExists(sess.GameID, conn)
+	httpInternalErrorIf(response, request, err)
+	if !gameExists {
+		logf(request, "Game %v for session %v does not exist", sess.GameID, sess)
+		err = sr.RemoveSession(&sess, conn)
+		logf(request, "Removed session %v for deleted game %v", sess.ID, sess.GameID)
+		httpUnauthorized(response, request, "Your session is now invalid")
+	}
+	logf(request, "Confirming authorization for %v in %v", sess.PlayerID, sess.GameID)
+
+	gameInfo, err := sr.GetGameInfo(sess.GameID, conn)
+	httpInternalErrorIf(response, request, err)
+	logf(request, "Got game info %v", gameInfo)
+
+	// TODO sr.MakeLoginResponse(*Session, *GameInfo)
+	err = writeBodyJSON(response, loginResponse{
+		PlayerID:   string(sess.PlayerID),
+		PlayerName: sess.PlayerName,
+		//GameInfo:   gameInfo,
+		Session: string(sess.ID),
+	})
+	httpInternalErrorIf(response, request, err)
+	httpSuccess(response, request,
+		sess.Type(), " ", sess.ID, " reauth for ", sess.PlayerID,
+		" in ", sess.GameID,
 	)
 }
 
