@@ -145,6 +145,11 @@ func GetSessionByID(sessionID string, conn redis.Conn) (Session, error) {
 	return session, nil
 }
 
+// GetPlayer retrieves the full player info for a given session
+func (session *Session) GetPlayer(conn redis.Conn) (*Player, error) {
+	return GetPlayerByID(string(session.PlayerID), conn)
+}
+
 // RemoveSession removes a session from Redis.
 func RemoveSession(session *Session, conn redis.Conn) error {
 	err := conn.Send("MULTI")

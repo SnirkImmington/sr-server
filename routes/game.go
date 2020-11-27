@@ -38,27 +38,6 @@ type renameRequest struct {
 	Name string `json:"name"`
 }
 
-var _ = gameRouter.HandleFunc("/rename", handleRename).Methods("POST")
-
-func handleRename(response Response, request *Request) {
-	logRequest(request)
-	sess, conn, err := requestSession(request)
-	defer closeRedis(request, conn)
-	httpUnauthorizedIf(response, request, err)
-
-	var rename renameRequest
-	err = readBodyJSON(request, &rename)
-	httpInternalErrorIf(response, request, err)
-
-	// No op
-
-	httpSuccess(
-		response, request,
-		sess.PlayerID, " [",
-		sess.PlayerName, "] -> [", rename.Name, "]",
-	)
-}
-
 var _ = gameRouter.HandleFunc("/modify-roll", handleUpdateEvent).Methods("POST")
 
 type updateEventRequest struct {

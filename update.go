@@ -99,26 +99,43 @@ func ParseUpdateTy(update string) string {
 	return match[1]
 }
 
-// CharDiffUpdate is an update when an attribute of a Char has been changed
+// PlayerDiffUpdate is an update when an attribute of a Player has been changed
 type PlayerDiffUpdate struct {
 	ID   UID
 	Diff map[string]interface{}
 }
 
-// MakeCharDiffUpdate produces a CharDiffUpdate for the given Char
-func MakePlayerDiffUpdateFor(player *Player) PlayerDiffUpdate {
+// MakePlayerDiffUpdate produces a PlayerDiffUpdate for the given Player
+func MakePlayerDiffUpdate(playerID UID) PlayerDiffUpdate {
 	return PlayerDiffUpdate{
-		ID:   player.ID,
+		ID:   playerID,
 		Diff: make(map[string]interface{}),
 	}
 }
 
+// AddField adds a field to the given player update
 func (update *PlayerDiffUpdate) AddField(field string, value interface{}) {
 	update.Diff[field] = value
 }
 
-// MarshalJSON converts the update to JSON. They're formatted as a 3-element list.
+// MarshalJSON - [plr ID Diff{}]
 func (update *PlayerDiffUpdate) MarshalJSON() ([]byte, error) {
 	fields := []interface{}{UpdateTypePlayer, update.ID, update.Diff}
+	return json.Marshal(fields)
+}
+
+// PlayerAddUpdate is sent to clients when a player is added to a game
+type PlayerAddUpdate struct {
+	Info PlayerInfo
+}
+
+// MakePlayerAddUpdate constructs a PlayerAddUpdate
+func MakePlayerAddUpdate(player *Player) PlayerAddUpdate {
+	return PlayerAddUpdate{player.Info()}
+}
+
+// MarshalJSON - [plr add PlayerInfo{}]
+func (update *PlayerAddUpdate) MarshalJSON() ([]byte, error) {
+	fields := []interface{}{UpdateTypePlayer, "add", update.Info}
 	return json.Marshal(fields)
 }

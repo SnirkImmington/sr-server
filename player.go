@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/gomodule/redigo/redis"
 	"math/rand"
+	"strings"
 )
 
 // ErrPlayerNotFound means a player was not found.
@@ -150,6 +151,10 @@ func RandomPlayerHue() int {
 	return rand.Intn(360)
 }
 
+func ValidPlayerName(name string) bool {
+	return len(name) > 0 && len(name) < 32 && !strings.ContainsAny(name, "\r\n")
+}
+
 /*
 // GetPlayerCharIDs returns the IDs of all the chars of a player
 func GetPlayerCharIDs(playerID UID, conn redis.Conn) ([]UID, error) {
@@ -238,9 +243,9 @@ func CreatePlayer(player *Player, conn redis.Conn) error {
 }
 
 // UpdatePlayer updates a player in the database.
-// It does not allow for username updates
-func UpdatePlayer(gameID string, player *Player, update PlayerDiffUpdate, conn redis.Conn) error {
-	playerData := redis.Args{}.Add(player.redisKey()).AddFlat(player)
+// It does not allow for username updates. It only publishes the update to the given game.
+func UpdatePlayer(gameID string, playerID UID, update *PlayerDiffUpdate, conn redis.Conn) error {
+	playerData := redis.Args{}.Add("player:" + playerID).AddFlat(update.Diff)
 	updateBytes, err := json.Marshal(update)
 	if err != nil {
 		return fmt.Errorf("unable to marshal update to JSON :%w", err)

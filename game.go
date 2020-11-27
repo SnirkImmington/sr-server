@@ -1,6 +1,7 @@
 package sr
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/gomodule/redigo/redis"
@@ -68,11 +69,13 @@ type GameInfo struct {
 	Players map[string]PlayerInfo `json:"players"`
 }
 
+// OldGameInfo is GameInfo that used to be sent
 type OldGameInfo struct {
 	ID      string            `json:"id"`
 	Players map[string]string `json:"players"`
 }
 
+// GetOldGameInfo is a function
 func GetOldGameInfo(gameID string, conn redis.Conn) (*OldGameInfo, error) {
 	players, err := redis.StringMap(conn.Do("hgetall", "player:"+gameID))
 	if err != nil {
@@ -92,6 +95,36 @@ func GetGameInfo(gameID string, conn redis.Conn) (*GameInfo, error) {
 		info[player.ID.String()] = player.Info()
 	}
 	return &GameInfo{ID: gameID, Players: info}, nil
+}
+
+// AddPlayerToKnownGame adds the given player to the given game
+func AddPlayerToKnownGame(player *Player, gameID string, conn redis.Conn) error {
+	updateBytes, err := json.Marshal(MakePlayerAddUpdate(player))
+	if err != nil {
+		return fmt.Errorf("error creating add player update for %v: %w", player, err)
+	}
+
+	if err := conn.Send("MULTI"); err != nil {
+		return fmt.Errorf("redis error sending MULTI: %w", err)
+	}
+	if err := conn.Send("SADD", "players:"+gameID, player.ID); err != nil {
+		return fmt.Errorf("redis error sending SADD: %w", err)
+	}
+	if err := conn.Send("PUBLISH", "update:"+gameID, updateBytes); err != nil {
+		return fmt.Errorf("redis error sending PUBLISH: %w", err)
+	}
+	// EXEC: [#added=1, #updated]
+	results, err := redis.Ints(conn.Do("EXEC"))
+	if err != nil {
+		return fmt.Errorf("redis error sending EXEC: %w", err)
+	}
+	if len(results) != 2 || results[0] != 1 {
+		return fmt.Errorf(
+			"redis invalid adding %v to %v: expected [1, *], got %v",
+			player, gameID, results,
+		)
+	}
+	return nil
 }
 
 // AddNewPlayerToKnownGame is used at login to add a newly created player to
