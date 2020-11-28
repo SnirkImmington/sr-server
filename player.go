@@ -112,6 +112,7 @@ func GetPlayerByID(playerID string, conn redis.Conn) (*Player, error) {
 	return &player, nil
 }
 
+// GetPlayerIDOf returns the playerID for the given username.
 func GetPlayerIDOf(username string, conn redis.Conn) (string, error) {
 	if username == "" {
 		return "", fmt.Errorf("empty username passed to GetPlayerIDOf")
@@ -151,6 +152,8 @@ func RandomPlayerHue() int {
 	return rand.Intn(360)
 }
 
+// ValidPlayerName determines if a player name is valid.
+// It checks for 1-32 chars with no newlines.
 func ValidPlayerName(name string) bool {
 	return len(name) > 0 && len(name) < 32 && !strings.ContainsAny(name, "\r\n")
 }
