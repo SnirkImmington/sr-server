@@ -5,44 +5,80 @@ import (
 	"errors"
 	"fmt"
 	"github.com/gomodule/redigo/redis"
+	"sr/config"
 )
 
 // ErrGameNotFound means that a specified game does not exists
 var ErrGameNotFound = errors.New("game not found")
+
+// ErrTransactionAborted means that a transaction was aborted and should be retried
+var ErrTransactionAborted = errors.New("transaction aborted")
 
 // GameExists returns whether the given game exists in Redis.
 func GameExists(gameID string, conn redis.Conn) (bool, error) {
 	return redis.Bool(conn.Do("exists", "game:"+gameID))
 }
 
-// GetPlayersInGame retrieves the list of players in a game
-// Returns ErrGameNotFound if the game is not found.
+// GetPlayersInGame retrieves the list of players in a game.
+// Returns ErrGameNotFound if the game is not found OR if it has no players.
 func GetPlayersInGame(gameID string, conn redis.Conn) ([]Player, error) {
-	playerIDs, err := redis.Strings(conn.Do("SMEMBERS", "players:"+gameID))
-	if err != nil {
-		return nil, fmt.Errorf("redis error retrieving player ID list: %w")
-	}
-	if len(playerIDs) == 0 {
-		return nil, fmt.Errorf("game %v has no players: %w", gameID, ErrGameNotFound)
-	}
-	if err = conn.Send("MULTI"); err != nil {
-		return nil, fmt.Errorf("redis error sending MULTI: %w", err)
-	}
-	for _, playerID := range playerIDs {
-		if err = conn.Send("HGETALL", "player:"+playerID); err != nil {
-			return nil, fmt.Errorf("redis error sending HGETALL %v: %w", playerID, err)
+	getPlayerMaps := func() ([]string, []interface{}, error) {
+		if _, err := conn.Do("WATCH", "players:"+gameID); err != nil {
+			return nil, nil, fmt.Errorf("redis error sending `WATCH`: %w", err)
 		}
+		playerIDs, err := redis.Strings(conn.Do("SMEMBERS", "players:"+gameID))
+		if err != nil {
+			return nil, nil, fmt.Errorf("redis error retrieving player ID list: %w")
+		}
+		if playerIDs == nil || len(playerIDs) == 0 {
+			if _, err := conn.Do("UNWATCH", "players:"+gameID); err != nil {
+				return nil, nil, fmt.Errorf("redis error sending `UNWATCH`: %w", err)
+			}
+			return nil, nil, fmt.Errorf("game %v has no players: %w", gameID, ErrGameNotFound)
+		}
+
+		if err = conn.Send("MULTI"); err != nil {
+			return nil, nil, fmt.Errorf("redis error sending MULTI: %w", err)
+		}
+		for _, playerID := range playerIDs {
+			if err = conn.Send("HGETALL", "player:"+playerID); err != nil {
+				return nil, nil, fmt.Errorf("redis error sending HGETALL %v: %w", playerID, err)
+			}
+		}
+
+		playerMaps, err := redis.Values(conn.Do("EXEC"))
+		if err != nil {
+			return nil, nil, fmt.Errorf("redis error sending EXEC: %w", err)
+		}
+		if playerMaps == nil || len(playerMaps) == 0 {
+			return nil, nil, ErrTransactionAborted
+		}
+		if len(playerMaps) < len(playerIDs) {
+			return nil, nil, fmt.Errorf(
+				"insufficient list of players in %v for meaningful response: %v",
+				gameID, playerMaps,
+			)
+		}
+		return playerIDs, playerMaps, nil
 	}
-	playerMaps, err := redis.Values(conn.Do("EXEC"))
+	var err error
+	var playerIDs []string
+	var playerMaps []interface{}
+	for i := 0; i < config.RedisRetries; i++ {
+		playerIDs, playerMaps, err = getPlayerMaps()
+		if errors.Is(err, ErrTransactionAborted) {
+			continue
+		} else if errors.Is(err, ErrGameNotFound) {
+			return nil, err
+		} else if err != nil {
+			return nil, fmt.Errorf("After %s attempt(s): %w", i+1, err)
+		}
+		break
+	}
 	if err != nil {
-		return nil, fmt.Errorf("redis error sending EXEC: %w", err)
+		return nil, fmt.Errorf("Error after max attempts: %w", err)
 	}
-	if len(playerMaps) == 0 || len(playerMaps) < len(playerIDs) {
-		return nil, fmt.Errorf(
-			"insufficient list of players in %v for meaningful response: %v",
-			gameID, playerMaps,
-		)
-	}
+
 	players := make([]Player, len(playerMaps))
 	for i, playerMap := range playerMaps {
 		err = redis.ScanStruct(playerMap.([]interface{}), &players[i])
@@ -69,21 +105,6 @@ type GameInfo struct {
 	Players map[string]PlayerInfo `json:"players"`
 }
 
-// OldGameInfo is GameInfo that used to be sent
-type OldGameInfo struct {
-	ID      string            `json:"id"`
-	Players map[string]string `json:"players"`
-}
-
-// GetOldGameInfo is a function
-func GetOldGameInfo(gameID string, conn redis.Conn) (*OldGameInfo, error) {
-	players, err := redis.StringMap(conn.Do("hgetall", "player:"+gameID))
-	if err != nil {
-		return nil, err
-	}
-	return &OldGameInfo{gameID, players}, nil
-}
-
 // GetGameInfo retrieves `GameInfo` for the given GameID
 func GetGameInfo(gameID string, conn redis.Conn) (*GameInfo, error) {
 	players, err := GetPlayersInGame(gameID, conn)
@@ -97,8 +118,8 @@ func GetGameInfo(gameID string, conn redis.Conn) (*GameInfo, error) {
 	return &GameInfo{ID: gameID, Players: info}, nil
 }
 
-// AddPlayerToKnownGame adds the given player to the given game
-func AddPlayerToKnownGame(player *Player, gameID string, conn redis.Conn) error {
+// AddPlayerToGame adds the given player to the given game
+func AddPlayerToGame(player *Player, gameID string, conn redis.Conn) error {
 	updateBytes, err := json.Marshal(MakePlayerAddUpdate(player))
 	if err != nil {
 		return fmt.Errorf("error creating add player update for %v: %w", player, err)
@@ -125,30 +146,4 @@ func AddPlayerToKnownGame(player *Player, gameID string, conn redis.Conn) error 
 		)
 	}
 	return nil
-}
-
-// AddNewPlayerToKnownGame is used at login to add a newly created player to
-// a game. It does not verify the GameID.
-func AddNewPlayerToKnownGame(
-	session *Session,
-	conn redis.Conn,
-) (string, error) {
-	_, err := conn.Do("hset", "player:"+session.GameID, session.PlayerID, session.PlayerName)
-	if err != nil {
-		return "", err
-	}
-
-	event := PlayerJoinEvent{
-		EventCore: EventCore{
-			ID:         NewEventID(),
-			Type:       EventTypePlayerJoin,
-			PlayerID:   session.PlayerID,
-			PlayerName: session.PlayerName,
-		},
-	}
-	err = PostEvent(session.GameID, &event, conn)
-	if err != nil {
-		return "", err
-	}
-	return "", nil
 }

@@ -394,7 +394,9 @@ func handleSubscription(response Response, request *Request) {
 	httpInternalErrorIf(response, request, err)
 	defer func() {
 		if _, err := sr.ExpireSession(&sess, conn); err != nil {
-			logf(request, "Error expiring session %v: %v", sess.LogInfo(), err)
+			logf(request, "** Error expiring session %v: %v", sess.LogInfo(), err)
+		} else {
+			logf(request, "** Expired session %v", sess.LogInfo())
 		}
 	}()
 
@@ -405,13 +407,13 @@ func handleSubscription(response Response, request *Request) {
 		const pollInterval = time.Duration(2) * time.Second
 		now := time.Now()
 		if !stream.IsOpen() {
-			logf(request, "== Connection closed by remote host")
+			logf(request, "Connection closed by remote host")
 			break
 		}
 		if now.Sub(lastPing) >= ssePingInterval {
 			err = stream.WriteStringEvent("", "")
 			if err != nil {
-				logf(request, "== Unable to write to stream: %v", err)
+				logf(request, "Unable to write to stream: %v", err)
 				break
 			}
 			lastPing = now
@@ -420,7 +422,7 @@ func handleSubscription(response Response, request *Request) {
 		case messageText := <-messages:
 			body := strings.SplitN(messageText, ":", 2)
 			if len(body) != 2 {
-				logf(request, "== Unable to parse message '%v'", body)
+				logf(request, "Unable to parse message '%v'", body)
 				break
 			}
 			var updateLog string
@@ -441,9 +443,9 @@ func handleSubscription(response Response, request *Request) {
 				logf(request, "Unable to write %s to stream: %v", messageText, err)
 				break
 			}
-			logf(request, "== Sent %v to %v", updateLog, sess.LogInfo())
+			logf(request, "=> Sent %v to %v", updateLog, sess.LogInfo())
 		case err := <-errChan:
-			logf(request, "== Error from subscription goroutine: %v", err)
+			logf(request, "=> Error from subscription goroutine: %v", err)
 			break
 		case <-time.After(pollInterval):
 			// Need to recheck stream.IsOpen()
@@ -452,7 +454,7 @@ func handleSubscription(response Response, request *Request) {
 	}
 	cancel()
 	dur := removeDecimal.ReplaceAllString(displayRequestDuration(subCtx), "")
-	logf(request, ">> --- Subscription for %v closed (%v)", sess.LogInfo(), dur)
+	logf(request, ">> Subscription for %v closed (%v)", sess.LogInfo(), dur)
 	if stream.IsOpen() {
 		stream.Close()
 	}

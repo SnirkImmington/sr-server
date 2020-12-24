@@ -26,7 +26,6 @@ type Player struct {
 // PlayerInfo is data other players can see about a player.
 //
 // - `username` is not shown.
-// - `Sessions` is converted to `online`
 type PlayerInfo struct {
 	ID   UID    `json:"-"`
 	Name string `json:"name"`
@@ -82,7 +81,7 @@ func PlayerExists(playerID string, conn redis.Conn) (bool, error) {
 func GetPlayerByID(playerID string, conn redis.Conn) (*Player, error) {
 	if playerID == "" {
 		return nil, fmt.Errorf(
-			"empty PlayerID passed to GetPlayerByID: %w", errNilPlayer,
+			"%w: empty PlayerID passed to GetPlayerByID", errNilPlayer,
 		)
 	}
 	var player Player
@@ -130,18 +129,18 @@ func GetPlayerIDOf(username string, conn redis.Conn) (string, error) {
 }
 
 // GetPlayerByUsername retrieves a player based on the username given.
-// Returns nil if no player with that username was found!
+// Returns ErrPlayerNotFound if no player is found.
 func GetPlayerByUsername(username string, conn redis.Conn) (*Player, error) {
 	if username == "" {
 		return nil, fmt.Errorf("empty username passed to GetPlayerByUsername")
 	}
 
-	playerID, err := redis.String(conn.Do("GET", "player_id:"+username))
+	playerID, err := redis.String(conn.Do("GET", "player_ids:"+username))
 	if err != nil {
 		return nil, fmt.Errorf("redis error checking `players` mapping: %w", err)
 	}
 	if playerID == "" {
-		return nil, nil
+		return nil, fmt.Errorf("%w: %v", ErrPlayerNotFound, username)
 	}
 
 	return GetPlayerByID(playerID, conn)
