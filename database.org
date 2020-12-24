@@ -10,13 +10,7 @@ Most of this will be transitioned over to a persistent SQL DB.
 secret.
 
 *Players*: players are persistent entities which can join a number of games.
-Each player may have any number of characters. Being online/in game is tracked
-by the player.
-
-*Characters*: chars represent entities such as player characters. A player may
-have multiple characters in a game if they have i.e. drones or companions. A
-game master might have characters to represent NPCs. Dice rolls are performed by
-the character.
+They are currently identified just by a username.
 
 *Sessions*: sessions are used with every client request to authenticate as a
 player in a game. They are generated with a random ID and can be persistent
@@ -33,34 +27,34 @@ they're created in via Redis pub/sub.
 all players via updates. These are small JSON strings often indicating a
 key/value change. Like events, they are sent to clients via Redis pub/sub.
 
-** Game ~game:{gameID}~ hash
+** Game ~game:{gameID}~ hash ~gamedata~
 - ~event_id~ number: unused.
 
-** Player ~player:{playerID}~ hash
-- ~username~
+** Player ~player:{playerID}~ hash ~playerdata~
+- ~username~ used to log in to the server
+- ~name~ displayed in games
+- ~hue~ displayed in games
 
-** Players by username ~players~ hash
-- contains the userID for each player by username
-- decent candidate for switching to SQL
+** Player for username ~player_ids~ hash ~username -> playerID~
+- Maps usernames to playerIDs
 
-** Sessions ~session:{sessionID}~ hash
+** Player in game ~players:{gameID}~ hash ~playerID -> roledata~
+- ~role~: "player" at the moment.
+
+** Sessions ~session:{sessionID}~ hash ~sessiondata~
 - ~gameID~, ~playerID~ of the player in question
 - ~persist~: 1 for persistent (default 1 month), 0 for temporary (default 15 min after logout).
   Persistence handled via Redis ~EXPIRE~.
-- Also includes ~playerName~ to reduce Redis lookups.
 
-** Char ~char:{charID}~ hash
-- ~name~, ~hue~
-
-** Persistent event history ~history:{gameID}~ sorted set
+** Persistent event history ~history:{gameID}~ sorted set ~eventdata~
 - score: timestamp (and ID) of the event
 - value: the event as a JSON string (which includes its timestamp)
 
-** Event channel ~event:{gameID}~ channel
+** Event channel ~event:{gameID}~ channel ~eventdata~
 - JSON-encoded events are published by event handlers
 - Subscribed to by SSE subscription handler
 
-** Update channel ~update:{gameID}~ channel
+** Update channel ~update:{gameID}~ channel ~updatedata~
 - JSON-encoded upates are published by event handlers
 - Subscribed to by SSE subscription handler
 - General format is ~[TYPE, ID, INFO]~
