@@ -156,6 +156,28 @@ func handleAddToGame(response Response, request *Request) {
 	)
 }
 
+var _ = tasksRouter.HandleFunc("/migrate-to-players", handleMigrateToPlayers).Methods("GET")
+
+func handleMigrateToPlayers(response Response, request *Request) {
+	logRequest(request)
+
+	gameID := request.FormValue("gameID")
+	if gameID == "" {
+		httpBadRequest(response, request, "Invalid game ID")
+	}
+
+	conn := sr.RedisPool.Get()
+	defer closeRedis(request, conn)
+
+	playerMap := make(map[sr.UID]sr.UID)
+	eventCount := 0
+	batch := 1
+
+	for {
+
+	}
+}
+
 var _ = tasksRouter.HandleFunc("/migrate-events", handleMigrateEvents).Methods("GET")
 
 // EventOut is the type of unmanaged JSON
