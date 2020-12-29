@@ -29,8 +29,9 @@ type Session struct {
 	GameID   string `redis:"gameID"`
 	PlayerID UID    `redis:"playerID"`
 	Persist  bool   `redis:"persist"`
+	Username string `redis:"username"`
 	// Mutable fields: keep the session up to date with the game/player
-	PlayerName string `redis:"playerName"`
+	// (none)
 }
 
 // Type returns "persist" for persistent sessions and "temp" for temp sessions.
@@ -42,33 +43,17 @@ func (s *Session) Type() string {
 }
 
 // LogInfo formats the session's player and game info for use in logging.
-func (s *Session) LogInfo() string {
-	return fmt.Sprintf(
-		"%v (%v) in %v",
-		s.PlayerName, s.PlayerID, s.GameID,
-	)
-}
-
-// PlayerInfo formats the less-technical player info for use in logging.
 func (s *Session) PlayerInfo() string {
 	return fmt.Sprintf(
-		"%v (%v in %v)",
-		s.PlayerID, s.PlayerName, s.GameID,
-	)
-}
-
-// SessionInfo formats the session's ID fields for use in logging.
-func (s *Session) SessionInfo() string {
-	return fmt.Sprintf(
-		"%v (%s %v in %v)",
-		s.ID, s.Type(), s.PlayerID, s.GameID,
+		"%v (%v) in %v",
+		s.PlayerID, s.Username, s.GameID,
 	)
 }
 
 func (s *Session) String() string {
 	return fmt.Sprintf(
-		"%v (%v) in %v (%v %v)",
-		s.PlayerName, s.PlayerID, s.GameID, s.Type(), s.ID,
+		"%v (%s %v in %v)",
+		s.ID, s.Type(), s.PlayerID, s.GameID,
 	)
 }
 
@@ -80,33 +65,31 @@ func (s *Session) redisKey() string {
 }
 
 // NewPlayerSession makes a new session for the given player name.
-func NewPlayerSession(gameID string, playerName string, persist bool, conn redis.Conn) (Session, error) {
-	playerID := GenUID()
-	return MakeSession(gameID, playerName, playerID, persist, conn)
+func NewPlayerSession(gameID string, player *Player, persist bool, conn redis.Conn) (*Session, error) {
+	return MakeSession(gameID, player, persist, conn)
 }
 
 // MakeSession adds a session for the given player in the given game
-func MakeSession(gameID string, playerName string, playerID UID, persist bool, conn redis.Conn) (Session, error) {
+func MakeSession(gameID string, player *Player, persist bool, conn redis.Conn) (*Session, error) {
 	sessionID := GenSessionID()
 	session := Session{
 		ID:       sessionID,
 		GameID:   gameID,
-		PlayerID: playerID,
+		PlayerID: player.ID,
+		Username: player.Username,
 		Persist:  persist,
-
-		PlayerName: playerName,
 	}
 
 	sessionArgs := redis.Args{}.Add(session.redisKey()).AddFlat(&session)
 	_, err := redis.String(conn.Do("hmset", sessionArgs...))
 	if err != nil {
-		return Session{}, fmt.Errorf("Redis error adding session %v: %w", sessionID, err)
+		return nil, fmt.Errorf("Redis error adding session %v: %w", sessionID, err)
 	}
 	_, err = ExpireSession(&session, conn)
 	if err != nil {
-		return Session{}, fmt.Errorf("Redis error expiring session %v: %w", sessionID, err)
+		return nil, fmt.Errorf("Redis error expiring session %v: %w", sessionID, err)
 	}
-	return session, nil
+	return &session, nil
 }
 
 var errNilSession = errors.New("Nil sessionID requested")

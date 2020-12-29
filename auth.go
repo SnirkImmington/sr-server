@@ -11,25 +11,25 @@ import (
 //
 // Returns ErrPlayerNotFound if the username is not found, ErrGameNotFound if
 // the game is not found. These should not be distinguished to users.
-func LogPlayerIn(username string, gameID string, conn redis.Conn) (*GameInfo, *Player, error) {
+func LogPlayerIn(gameID string, username string, conn redis.Conn) (*GameInfo, *Player, error) {
 	player, err := GetPlayerByUsername(username, conn)
 	if errors.Is(err, ErrPlayerNotFound) {
 		return nil, nil, fmt.Errorf("when logging %v in to %v: %w", username, gameID, err)
 	} else if err != nil {
-		return nil, nil, fmt.Errorf("redis error getting player: %w", err)
+		return nil, nil, fmt.Errorf("redis error getting %v: %w", username, err)
 	}
 
 	info, err := GetGameInfo(gameID, conn)
 	if errors.Is(err, ErrGameNotFound) {
 		return nil, nil, fmt.Errorf("when logging %v in to %v: %w", username, gameID, err)
 	} else if err != nil {
-		return nil, nil, fmt.Errorf("redis error getting game info: %w", err)
+		return nil, nil, fmt.Errorf("redis error fetching game info for %v: %w", gameID, err)
 	}
 
 	// Ensure player is in the game
 	if _, found := info.Players[string(player.ID)]; !found {
 		return nil, nil, fmt.Errorf(
-			"could not find %v (%v) in %v",
+			"could not find %v (%v) in %v: %#v",
 			player.ID, username, gameID, info,
 		)
 	}
