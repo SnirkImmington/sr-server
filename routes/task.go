@@ -114,7 +114,7 @@ func handleCreatePlayer(response Response, request *Request) {
 		Name:     name,
 		Hue:      hue,
 	}
-	logf(request, "Created player %v", player)
+	logf(request, "Created %#v", player)
 
 	err := sr.CreatePlayer(&player, conn)
 	httpInternalErrorIf(response, request, err)
@@ -149,7 +149,7 @@ func handleAddToGame(response Response, request *Request) {
 	httpInternalErrorIf(response, request, err)
 	logf(request, "Found player %v", player)
 
-	err = sr.AddPlayerToKnownGame(player, gameID, conn)
+	err = sr.AddPlayerToGame(player, gameID, conn)
 	httpInternalErrorIf(response, request, err)
 	httpSuccess(response, request,
 		"Added ", player, " to ", gameID,
@@ -169,13 +169,15 @@ func handleMigrateToPlayers(response Response, request *Request) {
 	conn := sr.RedisPool.Get()
 	defer closeRedis(request, conn)
 
-	playerMap := make(map[sr.UID]sr.UID)
-	eventCount := 0
-	batch := 1
+	/*
+		playerMap := make(map[sr.UID]sr.UID)
+		eventCount := 0
+		batch := 1
 
-	for {
+		for {
 
-	}
+		}
+	*/
 }
 
 var _ = tasksRouter.HandleFunc("/migrate-events", handleMigrateEvents).Methods("GET")
@@ -354,7 +356,7 @@ func handleTrimPlayers(response Response, request *Request) {
 		sessionID := key[8:]
 		logf(request, "Checking for session %v in %v", sessionID, gameID)
 		sess, err := sr.GetSessionByID(sessionID, conn)
-		logf(request, "Found %v", sess.LogInfo())
+		logf(request, "Found %v", sess)
 		httpInternalErrorIf(response, request, err)
 	}
 }

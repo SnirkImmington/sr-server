@@ -41,17 +41,19 @@ func handleLogin(response Response, request *Request) {
 
 	gameInfo, player, err := sr.LogPlayerIn(login.GameID, login.Username, conn)
 	if errors.Is(err, sr.ErrPlayerNotFound) {
-		logf(request, "Login response: game %v not found", login.GameID)
-		httpForbiddenIf(response, request, err)
-	} else if errors.Is(err, sr.ErrGameNotFound) {
 		logf(request, "Login response: player %v not found", login.Username)
 		httpForbiddenIf(response, request, err)
+	} else if errors.Is(err, sr.ErrGameNotFound) {
+		logf(request, "Login response: game %v not found", login.GameID)
+		httpForbiddenIf(response, request, err)
 	} else if err != nil {
+		logf(request, "Error with redis operation")
 		httpInternalErrorIf(response, request, err)
 	}
 	logf(request, "found %v in %v", player.ID, login.GameID)
 
-	session, err := sr.NewPlayerSession(login.GameID, player.Username, login.Persist, conn)
+	logf(request, "Creating session %s for %v", status, player.ID)
+	session, err := sr.NewPlayerSession(login.GameID, player, login.Persist, conn)
 	httpInternalErrorIf(response, request, err)
 	logf(request, "Created session %v for %v", session.ID, player.ID)
 	logf(request, "Got game info %v", gameInfo)
@@ -141,7 +143,7 @@ func handleLogout(response Response, request *Request) {
 
 	err = sr.RemoveSession(&sess, conn)
 	httpInternalErrorIf(response, request, err)
-	logf(request, "Logged out %v", sess.LogInfo())
+	logf(request, "Logged out %v", sess.PlayerInfo())
 
 	httpSuccess(response, request, "logged out")
 }

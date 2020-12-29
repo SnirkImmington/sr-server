@@ -7,7 +7,6 @@ import (
 	"runtime/debug"
 	"sr"
 	"sr/config"
-	"strings"
 	"time"
 )
 
@@ -38,13 +37,13 @@ func requestContextMiddleware(wrapped http.Handler) http.Handler {
 func localhostOnlyMiddleware(wrapped http.Handler) http.Handler {
 	return http.HandlerFunc(func(response Response, request *Request) {
 		// Not sure if this should just be remote addr.
-		remoteAddr := strings.Split(requestRemoteAddr(request), ":")[0]
-		allowed := remoteAddr == "localhost" || remoteAddr == "127.0.0.1"
+		remoteAddr := requestRemoteIP(request)
+		allowed := remoteAddr == "localhost" || remoteAddr == "127.0.0.1" || remoteAddr == "[::1]"
 		message := "disallowed"
 		if allowed {
 			message = "allowed"
 		}
-		logf(request, "localhostOnly: %v %v", remoteAddr, message)
+		logf(request, "localhostOnly: %v %v", requestRemoteAddr(request), message)
 		if !allowed {
 			httpNotFound(response, request, "Not found")
 			return

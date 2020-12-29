@@ -135,12 +135,11 @@ func GetPlayerByUsername(username string, conn redis.Conn) (*Player, error) {
 		return nil, fmt.Errorf("empty username passed to GetPlayerByUsername")
 	}
 
-	playerID, err := redis.String(conn.Do("GET", "player_ids:"+username))
-	if err != nil {
-		return nil, fmt.Errorf("redis error checking `players` mapping: %w", err)
-	}
-	if playerID == "" {
+	playerID, err := redis.String(conn.Do("HGET", "player_ids", username))
+	if errors.Is(err, redis.ErrNil) || playerID == "" {
 		return nil, fmt.Errorf("%w: %v", ErrPlayerNotFound, username)
+	} else if err != nil {
+		return nil, fmt.Errorf("redis error checking `player_ids`: %w", err)
 	}
 
 	return GetPlayerByID(playerID, conn)

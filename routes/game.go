@@ -56,7 +56,7 @@ func handleUpdateEvent(response Response, request *Request) {
 	httpInternalErrorIf(response, request, err)
 
 	logf(request,
-		"%v requests update %v", sess.PlayerInfo(), updateRequest,
+		"%s requests update %v", sess.PlayerInfo(), updateRequest,
 	)
 	eventText, err := sr.EventByID(sess.GameID, updateRequest.ID, conn)
 	httpBadRequestIf(response, request, err)
@@ -185,14 +185,13 @@ func handleRoll(response Response, request *Request) {
 	if roll.Edge {
 		rolls := sr.ExplodingSixes(roll.Count)
 		logf(request, "%v: edge roll: %v",
-			sess.LogInfo(), rolls,
+			sess.PlayerInfo(), rolls,
 		)
 		event = &sr.EdgeRollEvent{
 			EventCore: sr.EventCore{
-				ID:         sr.NewEventID(),
-				Type:       sr.EventTypeEdgeRoll,
-				PlayerID:   sess.PlayerID,
-				PlayerName: sess.PlayerName,
+				ID:       sr.NewEventID(),
+				Type:     sr.EventTypeEdgeRoll,
+				PlayerID: sess.PlayerID,
 			},
 			Title:   roll.Title,
 			Rounds:  rolls,
@@ -203,14 +202,13 @@ func handleRoll(response Response, request *Request) {
 		rolls := make([]int, roll.Count)
 		hits := sr.FillRolls(rolls)
 		logf(request, "%v rolls %v (%v hits)",
-			sess.LogInfo(), rolls, hits,
+			sess.PlayerInfo(), rolls, hits,
 		)
 		event = &sr.RollEvent{
 			EventCore: sr.EventCore{
-				ID:         sr.NewEventID(),
-				Type:       sr.EventTypeRoll,
-				PlayerID:   sess.PlayerID,
-				PlayerName: sess.PlayerName,
+				ID:       sr.NewEventID(),
+				Type:     sr.EventTypeRoll,
+				PlayerID: sess.PlayerID,
 			},
 			Title:   roll.Title,
 			Dice:    rolls,
@@ -259,7 +257,7 @@ func handleRollInitiative(response Response, request *Request) {
 	sr.FillRolls(dice)
 
 	logf(request, "%v rolls %v + %v for `%v`",
-		sess.LogInfo(), roll.Base, dice, roll.Title,
+		sess.PlayerInfo(), roll.Base, dice, roll.Title,
 	)
 	event := &sr.InitiativeRollEvent{
 		EventCore: sr.InitiativeRollEventCore(&sess),
@@ -376,7 +374,7 @@ func handleSubscription(response Response, request *Request) {
 	httpInternalErrorIf(response, request, err)
 
 	// Subscribe to redis
-	logf(request, "Opening pub/sub for %v", sess.LogInfo())
+	logf(request, "Opening pub/sub for %s", sess)
 	subCtx, cancel := context.WithCancel(request.Context())
 	messages, errChan := sr.SubscribeToGame(subCtx, sess.GameID)
 	logf(request, "Game subscription successful")
@@ -389,14 +387,14 @@ func handleSubscription(response Response, request *Request) {
 	}
 
 	// Restart the session's month/15 min duration while streaming
-	logf(request, "Unexpire session %v", sess.LogInfo())
+	logf(request, "Unexpire session %s", sess)
 	_, err = sr.UnexpireSession(&sess, conn)
 	httpInternalErrorIf(response, request, err)
 	defer func() {
 		if _, err := sr.ExpireSession(&sess, conn); err != nil {
-			logf(request, "** Error expiring session %v: %v", sess.LogInfo(), err)
+			logf(request, "** Error expiring session %s: %v", sess, err)
 		} else {
-			logf(request, "** Expired session %v", sess.LogInfo())
+			logf(request, "** Expired session %s", sess)
 		}
 	}()
 
@@ -443,7 +441,7 @@ func handleSubscription(response Response, request *Request) {
 				logf(request, "Unable to write %s to stream: %v", messageText, err)
 				break
 			}
-			logf(request, "=> Sent %v to %v", updateLog, sess.LogInfo())
+			logf(request, "=> Sent %v to %v", updateLog, sess.PlayerInfo())
 		case err := <-errChan:
 			logf(request, "=> Error from subscription goroutine: %v", err)
 			break
@@ -454,7 +452,7 @@ func handleSubscription(response Response, request *Request) {
 	}
 	cancel()
 	dur := removeDecimal.ReplaceAllString(displayRequestDuration(subCtx), "")
-	logf(request, ">> Subscription for %v closed (%v)", sess.LogInfo(), dur)
+	logf(request, ">> Subscription for %v closed (%v)", sess.PlayerInfo(), dur)
 	if stream.IsOpen() {
 		stream.Close()
 	}
@@ -498,7 +496,7 @@ func handleEvents(response Response, request *Request) {
 	}
 
 	logf(request, "Retrieve events [%s ... %s] for %s",
-		oldest, newest, sess.LogInfo(),
+		oldest, newest, sess.PlayerInfo(),
 	)
 
 	events, err := sr.EventsBetween(

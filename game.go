@@ -31,10 +31,10 @@ func GetPlayersInGame(gameID string, conn redis.Conn) ([]Player, error) {
 			return nil, nil, fmt.Errorf("redis error retrieving player ID list: %w")
 		}
 		if playerIDs == nil || len(playerIDs) == 0 {
-			if _, err := conn.Do("UNWATCH", "players:"+gameID); err != nil {
+			if _, err := conn.Do("UNWATCH"); err != nil {
 				return nil, nil, fmt.Errorf("redis error sending `UNWATCH`: %w", err)
 			}
-			return nil, nil, fmt.Errorf("game %v has no players: %w", gameID, ErrGameNotFound)
+			return nil, nil, fmt.Errorf("%w: %v has no players", ErrGameNotFound, gameID)
 		}
 
 		if err = conn.Send("MULTI"); err != nil {
@@ -82,10 +82,11 @@ func GetPlayersInGame(gameID string, conn redis.Conn) ([]Player, error) {
 	players := make([]Player, len(playerMaps))
 	for i, playerMap := range playerMaps {
 		err = redis.ScanStruct(playerMap.([]interface{}), &players[i])
+		players[i].ID = UID(playerIDs[i])
 		if err != nil {
 			return nil, fmt.Errorf(
-				"redis error parsing %v player #%v %v: %w",
-				gameID, i, playerIDs[i], err,
+				"redis error parsing #%v #%v: %w",
+				i, playerIDs[i], err,
 			)
 		}
 		if players[i].Username == "" {
@@ -109,7 +110,7 @@ type GameInfo struct {
 func GetGameInfo(gameID string, conn redis.Conn) (*GameInfo, error) {
 	players, err := GetPlayersInGame(gameID, conn)
 	if err != nil {
-		return nil, fmt.Errorf("error getting players in game: %w", err)
+		return nil, fmt.Errorf("error getting players in game %v: %w", gameID, err)
 	}
 	info := make(map[string]PlayerInfo, len(players))
 	for _, player := range players {
