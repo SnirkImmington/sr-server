@@ -180,6 +180,9 @@ func handleRoll(response Response, request *Request) {
 		httpBadRequest(response, request, "Roll count too high")
 	}
 
+	player, err := sess.GetPlayer(conn)
+	httpInternalErrorIf(response, request, err)
+
 	var event sr.Event
 	// Note that roll generation is possibly blocking
 	if roll.Edge {
@@ -188,14 +191,10 @@ func handleRoll(response Response, request *Request) {
 			sess.PlayerInfo(), rolls,
 		)
 		event = &sr.EdgeRollEvent{
-			EventCore: sr.EventCore{
-				ID:       sr.NewEventID(),
-				Type:     sr.EventTypeEdgeRoll,
-				PlayerID: sess.PlayerID,
-			},
-			Title:   roll.Title,
-			Rounds:  rolls,
-			Glitchy: roll.Glitchy,
+			EventCore: sr.EdgeRollEventCore(player),
+			Title:     roll.Title,
+			Rounds:    rolls,
+			Glitchy:   roll.Glitchy,
 		}
 
 	} else {
@@ -205,14 +204,10 @@ func handleRoll(response Response, request *Request) {
 			sess.PlayerInfo(), rolls, hits,
 		)
 		event = &sr.RollEvent{
-			EventCore: sr.EventCore{
-				ID:       sr.NewEventID(),
-				Type:     sr.EventTypeRoll,
-				PlayerID: sess.PlayerID,
-			},
-			Title:   roll.Title,
-			Dice:    rolls,
-			Glitchy: roll.Glitchy,
+			EventCore: sr.RollEventCore(player),
+			Title:     roll.Title,
+			Dice:      rolls,
+			Glitchy:   roll.Glitchy,
 		}
 	}
 
@@ -239,9 +234,19 @@ func handleRollInitiative(response Response, request *Request) {
 	defer closeRedis(request, conn)
 	httpUnauthorizedIf(response, request, err)
 
+	player, err := sess.GetPlayer(conn)
+	httpInternalErrorIf(response, request, err)
+
 	var roll initiativeRollRequest
 	err = readBodyJSON(request, &roll)
 	httpInternalErrorIf(response, request, err)
+	displayedTitle := "initiative"
+	if roll.Title != "" {
+		displayedTitle = roll.Title
+	}
+	logf(request, "Initiative request from %v to roll %v + %v (%v)",
+		sess.String(), roll.Base, roll.Dice, displayedTitle,
+	)
 
 	if roll.Dice < 1 {
 		httpBadRequest(response, request, "Invalid dice count")
@@ -260,7 +265,7 @@ func handleRollInitiative(response Response, request *Request) {
 		sess.PlayerInfo(), roll.Base, dice, roll.Title,
 	)
 	event := &sr.InitiativeRollEvent{
-		EventCore: sr.InitiativeRollEventCore(&sess),
+		EventCore: sr.InitiativeRollEventCore(player),
 		Title:     roll.Title,
 		Base:      roll.Base,
 		Dice:      dice,
@@ -306,7 +311,7 @@ func handleReroll(response Response, request *Request) {
 		logf(request, "Expecting to parse previous roll")
 		httpBadRequest(response, request, "Invalid previous roll")
 	}
-	logf(request, "Got previous roll %v %v",
+	logf(request, "Got previous roll `%v` %v",
 		previousRoll.Title, previousRoll.Dice,
 	)
 

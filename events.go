@@ -22,8 +22,8 @@ type RollEvent struct {
 }
 
 // RollEventCore makes the EventCore of a RollEvent.
-func RollEventCore(session *Session) EventCore {
-	return MakeEventCore(EventTypeRoll, session)
+func RollEventCore(player *Player) EventCore {
+	return MakeEventCore(EventTypeRoll, player)
 }
 
 //
@@ -42,8 +42,8 @@ type EdgeRollEvent struct {
 }
 
 // EdgeRollEventCore makes the EventCore of an EdgeRollEvent.
-func EdgeRollEventCore(session *Session) EventCore {
-	return MakeEventCore("edgeRoll", session)
+func EdgeRollEventCore(player *Player) EventCore {
+	return MakeEventCore("edgeRoll", player)
 }
 
 //
@@ -64,8 +64,8 @@ type RerollFailuresEvent struct {
 }
 
 // RerollFailuresEventCore makes the EventCore of a RerollFailuresEvent.
-func RerollFailuresEventCore(session *Session) EventCore {
-	return MakeEventCore(EventTypeRerollFailures, session)
+func RerollFailuresEventCore(player *Player) EventCore {
+	return MakeEventCore(EventTypeRerollFailures, player)
 }
 
 // EventTypeInitiativeRoll is the type of `InitiativeRollEvent`.
@@ -80,8 +80,8 @@ type InitiativeRollEvent struct {
 }
 
 // InitiativeRollEventCore makes the EventCore of an InitiativeRollEvent.
-func InitiativeRollEventCore(session *Session) EventCore {
-	return MakeEventCore(EventTypeInitiativeRoll, session)
+func InitiativeRollEventCore(player *Player) EventCore {
+	return MakeEventCore(EventTypeInitiativeRoll, player)
 }
 
 //
@@ -97,8 +97,8 @@ type PlayerJoinEvent struct {
 }
 
 // PlayerJoinEventCore makes the EventCore of a PlayerJoinEvent.
-func PlayerJoinEventCore(session *Session) EventCore {
-	return MakeEventCore(EventTypePlayerJoin, session)
+func PlayerJoinEventCore(player *Player) EventCore {
+	return MakeEventCore(EventTypePlayerJoin, player)
 }
 
 //
@@ -202,14 +202,14 @@ func ParseEvent(input []byte) (Event, error) {
 	}
 }
 
-// MakeEventCore produces an EventCore of the given type using the given session.
-func MakeEventCore(ty string, session *Session) EventCore {
+// MakeEventCore produces an EventCore of the given type using the given player.
+func MakeEventCore(ty string, player *Player) EventCore {
 	return EventCore{
 		ID:         NewEventID(),
 		Type:       ty,
 		Edit:       0,
-		PlayerID:   session.PlayerID,
-		PlayerName: "", // TODO
+		PlayerID:   player.ID,
+		PlayerName: player.Name,
 	}
 }
 
