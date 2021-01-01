@@ -39,14 +39,15 @@ func handleLogin(response Response, request *Request) {
 	defer closeRedis(request, conn)
 
 	gameInfo, player, err := sr.LogPlayerIn(login.GameID, login.Username, conn)
-	if errors.Is(err, sr.ErrPlayerNotFound) {
-		logf(request, "Login response: player %v not found", login.Username)
-		httpForbiddenIf(response, request, err)
-	} else if errors.Is(err, sr.ErrGameNotFound) {
-		logf(request, "Login response: game %v not found", login.GameID)
+	if err != nil {
+		logf(request, "Login response: %v", err)
+	}
+	if errors.Is(err, sr.ErrPlayerNotFound) ||
+		errors.Is(err, sr.ErrGameNotFound) ||
+		errors.Is(err, sr.ErrNotAuthorized) {
 		httpForbiddenIf(response, request, err)
 	} else if err != nil {
-		logf(request, "Error with redis operation")
+		logf(request, "Error with redis operation: %v", err)
 		httpInternalErrorIf(response, request, err)
 	}
 	logf(request, "found %v in %v", player.ID, login.GameID)

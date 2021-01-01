@@ -6,6 +6,8 @@ import (
 	"github.com/gomodule/redigo/redis"
 )
 
+var ErrNotAuthorized = errors.New("not authorized")
+
 // LogPlayerIn checks username/gameID credentials and returns the relevant
 // GameInfo for the client.
 //
@@ -14,7 +16,7 @@ import (
 func LogPlayerIn(gameID string, username string, conn redis.Conn) (*GameInfo, *Player, error) {
 	player, err := GetPlayerByUsername(username, conn)
 	if errors.Is(err, ErrPlayerNotFound) {
-		return nil, nil, fmt.Errorf("when logging %v in to %v: %w", username, gameID, err)
+		return nil, nil, fmt.Errorf("%w (%v logging into %v)", err, username, gameID)
 	} else if err != nil {
 		return nil, nil, fmt.Errorf("redis error getting %v: %w", username, err)
 	}
@@ -29,8 +31,8 @@ func LogPlayerIn(gameID string, username string, conn redis.Conn) (*GameInfo, *P
 	// Ensure player is in the game
 	if _, found := info.Players[string(player.ID)]; !found {
 		return nil, nil, fmt.Errorf(
-			"could not find %v (%v) in %v: %#v",
-			player.ID, username, gameID, info,
+			"%w: player %v (%v) to %v",
+			ErrNotAuthorized, player.ID, username, gameID,
 		)
 	}
 	return info, player, nil
