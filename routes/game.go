@@ -364,17 +364,16 @@ var _ = gameRouter.HandleFunc("/subscription", handleSubscription).Methods("GET"
 func handleSubscription(response Response, request *Request) {
 	logRequest(request)
 	sess, conn, err := requestParamSession(request)
-	defer closeRedis(request, conn)
 	httpUnauthorizedIf(response, request, err)
+	defer closeRedis(request, conn)
 
 	// Upgrade to SSE stream
 	logf(request, "Upgrading to SSE")
 	stream, err := sseUpgrader.Upgrade(response, request)
-	lastPing := time.Now()
 	httpInternalErrorIf(response, request, err)
 
 	// Subscribe to redis
-	logf(request, "Opening pub/sub for %s", sess)
+	logf(request, "Opening pub/sub for %s", sess.String())
 	subCtx, cancel := context.WithCancel(request.Context())
 	messages, errChan := sr.SubscribeToGame(subCtx, sess.GameID)
 	logf(request, "Game subscription successful")
@@ -387,16 +386,23 @@ func handleSubscription(response Response, request *Request) {
 	}
 
 	// Restart the session's month/15 min duration while streaming
-	logf(request, "Unexpire session %s", sess)
 	_, err = sr.UnexpireSession(&sess, conn)
 	httpInternalErrorIf(response, request, err)
+	logf(request, "Unexpired session %s", sess.ID)
 	defer func() {
 		if _, err := sr.ExpireSession(&sess, conn); err != nil {
-			logf(request, "** Error expiring session %s: %v", sess, err)
+			logf(request, "** Error expiring session %s: %v", sess.String(), err)
 		} else {
-			logf(request, "** Expired session %s", sess)
+			logf(request, "** Re-expired session %s", sess.String())
 		}
 	}()
+
+	err = stream.WriteStringEvent("", "")
+	lastPing := time.Now()
+	if err != nil {
+		logf(request, "Unable to write initial ping: %v", err)
+		return
+	}
 
 	// Begin writing events
 	logf(request, "Begin receiving events...")

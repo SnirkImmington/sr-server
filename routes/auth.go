@@ -11,7 +11,7 @@ type loginResponse struct {
 	Player    *sr.Player   `json:"player"`
 	GameInfo  *sr.GameInfo `json:"game"`
 	Session   string       `json:"session"`
-	LastEvent string       `json:"lastEvent"`
+	LastEvent int32        `json:"lastEvent"`
 }
 
 // POST /auth/login { gameID, playerName } -> auth token, session token
@@ -84,7 +84,7 @@ func handleReauth(response Response, request *Request) {
 	requestSession := reauthRequest.Session
 
 	logf(request,
-		"Relogin request for %v", requestSession,
+		"Relogin request for session %v", requestSession,
 	)
 
 	conn := sr.RedisPool.Get()
@@ -92,6 +92,7 @@ func handleReauth(response Response, request *Request) {
 
 	session, err := sr.GetSessionByID(requestSession, conn)
 	httpUnauthorizedIf(response, request, err)
+	logf(request, "Found session %s", session.String())
 
 	// Double check that the relevant items exist.
 	gameExists, err := sr.GameExists(session.GameID, conn)
@@ -103,6 +104,8 @@ func handleReauth(response Response, request *Request) {
 		logf(request, "Removed session %v for deleted game %v", session.ID, session.PlayerID)
 		httpUnauthorized(response, request, "Your session is now invalid")
 	}
+	logf(request, "Confirmed game %s exists", session.GameID)
+
 	player, err := sr.GetPlayerByID(string(session.PlayerID), conn)
 	if errors.Is(err, sr.ErrPlayerNotFound) {
 		logf(request, "Player %v does not exist", session.PlayerID)
@@ -113,16 +116,16 @@ func handleReauth(response Response, request *Request) {
 	} else if err != nil {
 		httpInternalErrorIf(response, request, err)
 	}
-	logf(request, "Found session %v for %v in %v", session.ID, session.PlayerID, session.GameID)
+	logf(request, "Confirmed player %s exists", player.ID)
 
 	gameInfo, err := sr.GetGameInfo(session.GameID, conn)
 	httpInternalErrorIf(response, request, err)
 
 	reauthed := loginResponse{
-		Player:    player,
-		GameInfo:  gameInfo,
-		Session:   string(session.ID),
-		LastEvent: "",
+		Player:   player,
+		GameInfo: gameInfo,
+		Session:  string(session.ID),
+		// LastEvent
 	}
 	err = writeBodyJSON(response, reauthed)
 	httpInternalErrorIf(response, request, err)
