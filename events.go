@@ -209,7 +209,7 @@ func MakeEventCore(ty string, session *Session) EventCore {
 		Type:       ty,
 		Edit:       0,
 		PlayerID:   session.PlayerID,
-		PlayerName: session.PlayerName,
+		PlayerName: "", // TODO
 	}
 }
 

@@ -8,10 +8,9 @@ import (
 var authRouter = restRouter.PathPrefix("/auth").Subrouter()
 
 type loginResponse struct {
-	Player    *sr.Player   `json:"player"`
-	GameInfo  *sr.GameInfo `json:"game"`
-	Session   string       `json:"session"`
-	LastEvent int32        `json:"lastEvent"`
+	Player   *sr.Player   `json:"player"`
+	GameInfo *sr.GameInfo `json:"game"`
+	Session  string       `json:"session"`
 }
 
 // POST /auth/login { gameID, playerName } -> auth token, session token
@@ -125,7 +124,6 @@ func handleReauth(response Response, request *Request) {
 		Player:   player,
 		GameInfo: gameInfo,
 		Session:  string(session.ID),
-		// LastEvent
 	}
 	err = writeBodyJSON(response, reauthed)
 	httpInternalErrorIf(response, request, err)
