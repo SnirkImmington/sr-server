@@ -243,9 +243,10 @@ func handleMigrateEvents(response Response, request *Request) {
 			newID, err := strconv.Atoi(strings.SplitN(eventID, "-", 2)[0])
 			httpInternalErrorIf(response, request, err)
 			core := sr.EventCore{
-				ID:       int64(newID),
-				Type:     eventTy,
-				PlayerID: sr.UID(playerID),
+				ID:         int64(newID),
+				Type:       eventTy,
+				PlayerID:   sr.UID(playerID),
+				PlayerName: event["pName"].(string),
 			}
 
 			var out sr.Event
