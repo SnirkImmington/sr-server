@@ -318,11 +318,10 @@ func handleReroll(response Response, request *Request) {
 		}
 		rerolled := sr.RerollFailuresEvent{
 			EventCore: sr.EventCore{
-				ID:         previousRoll.ID,
-				Edit:       sr.NewEventID(),
-				Type:       sr.EventTypeRerollFailures,
-				PlayerID:   previousRoll.PlayerID,
-				PlayerName: previousRoll.PlayerName,
+				ID:       previousRoll.ID,
+				Edit:     sr.NewEventID(),
+				Type:     sr.EventTypeRerollFailures,
+				PlayerID: previousRoll.PlayerID,
 			},
 			PrevID: previousRoll.ID,
 			Title:  previousRoll.Title,

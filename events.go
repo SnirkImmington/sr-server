@@ -107,11 +107,10 @@ func PlayerJoinEventCore(session *Session) EventCore {
 
 // EventCore is the basic values put into events.
 type EventCore struct {
-	ID         int64  `json:"id"`             // ID of the event
-	Type       string `json:"ty"`             // Type of the event
-	Edit       int64  `json:"edit,omitempty"` // Edit time of the event
-	PlayerID   UID    `json:"pID"`            // ID of the player who posted the event
-	PlayerName string `json:"pName"`          // Name of the player who posted the event
+	ID       int64  `json:"id"`             // ID of the event
+	Type     string `json:"ty"`             // Type of the event
+	Edit     int64  `json:"edit,omitempty"` // Edit time of the event
+	PlayerID UID    `json:"pID"`            // ID of the player who posted the event
 }
 
 // Event is the common interface of all events.
@@ -119,7 +118,6 @@ type Event interface {
 	GetID() int64
 	GetType() string
 	GetPlayerID() UID
-	GetPlayerName() string
 	GetEdit() int64
 	SetEdit(edited int64)
 }
@@ -137,12 +135,6 @@ func (core *EventCore) GetType() string {
 // GetPlayerID returns the PlayerID of the player who triggered the event.
 func (core *EventCore) GetPlayerID() UID {
 	return core.PlayerID
-}
-
-// GetPlayerName returns the name of the player who triggered the event
-// at the time that it happened.
-func (core *EventCore) GetPlayerName() string {
-	return core.PlayerName
 }
 
 // GetEdit gets the event's edit time
@@ -205,11 +197,10 @@ func ParseEvent(input []byte) (Event, error) {
 // MakeEventCore produces an EventCore of the given type using the given session.
 func MakeEventCore(ty string, session *Session) EventCore {
 	return EventCore{
-		ID:         NewEventID(),
-		Type:       ty,
-		Edit:       0,
-		PlayerID:   session.PlayerID,
-		PlayerName: "", // TODO
+		ID:       NewEventID(),
+		Type:     ty,
+		Edit:     0,
+		PlayerID: session.PlayerID,
 	}
 }
 
