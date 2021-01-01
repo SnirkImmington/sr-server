@@ -17,17 +17,17 @@ var ErrPlayerNotFound = errors.New("player not found")
 // Players may be registered for a number of games.
 // Within those games, they may have a number of chars.
 type Player struct {
-	ID       UID    `redis:"-"`
-	Username string `redis:"uname"`
-	Name     string `redis:"name"`
-	Hue      int    `redis:"hue"`
+	ID       UID    `json:"id" redis:"-"`
+	Username string `json:"username" redis:"uname"`
+	Name     string `json:"name" redis:"name"`
+	Hue      int    `json:"hue" redis:"hue"`
 }
 
 // PlayerInfo is data other players can see about a player.
 //
 // - `username` is not shown.
 type PlayerInfo struct {
-	ID   UID    `json:"-"`
+	ID   UID    `json:"id"`
 	Name string `json:"name"`
 	Hue  int    `json:"hue"`
 }
@@ -86,14 +86,18 @@ func GetPlayerByID(playerID string, conn redis.Conn) (*Player, error) {
 	}
 	var player Player
 	data, err := conn.Do("hgetall", "player:"+playerID)
-	if err != nil {
+	if errors.Is(err, redis.ErrNil) {
+		return nil, fmt.Errorf(
+			"%w: %v", ErrPlayerNotFound, playerID,
+		)
+	} else if err != nil {
 		return nil, fmt.Errorf(
 			"redis error retrieving data for %v: %w", playerID, err,
 		)
 	}
 	if data == nil || len(data.([]interface{})) == 0 {
 		return nil, fmt.Errorf(
-			"empty data from redis for %v: %w", playerID, errNoPlayer,
+			"%w: no data for %v", ErrPlayerNotFound, playerID,
 		)
 	}
 	err = redis.ScanStruct(data.([]interface{}), &player)
@@ -114,16 +118,20 @@ func GetPlayerByID(playerID string, conn redis.Conn) (*Player, error) {
 // GetPlayerIDOf returns the playerID for the given username.
 func GetPlayerIDOf(username string, conn redis.Conn) (string, error) {
 	if username == "" {
-		return "", fmt.Errorf("empty username passed to GetPlayerIDOf")
+		return "", fmt.Errorf("%w: empty username passed to GetPlayerIDOf", errNilPlayer)
 	}
 	playerID, err := redis.String(conn.Do("GET", "player_id:"+username))
-	if err != nil {
+	if errors.Is(err, redis.ErrNil) {
+		return "", fmt.Errorf(
+			"%w: %v", ErrPlayerNotFound, username,
+		)
+	} else if err != nil {
 		return "", fmt.Errorf(
 			"redis error getting player ID of %v: %w", username, err,
 		)
 	}
 	if playerID == "" {
-		return "", fmt.Errorf("player %v not found: %w", username, ErrPlayerNotFound)
+		return "", fmt.Errorf("%w: %v (empty string stored)", ErrPlayerNotFound, username)
 	}
 	return playerID, nil
 }
@@ -136,10 +144,13 @@ func GetPlayerByUsername(username string, conn redis.Conn) (*Player, error) {
 	}
 
 	playerID, err := redis.String(conn.Do("HGET", "player_ids", username))
-	if errors.Is(err, redis.ErrNil) || playerID == "" {
+	if errors.Is(err, redis.ErrNil) {
 		return nil, fmt.Errorf("%w: %v", ErrPlayerNotFound, username)
 	} else if err != nil {
 		return nil, fmt.Errorf("redis error checking `player_ids`: %w", err)
+	}
+	if playerID == "" {
+		return nil, fmt.Errorf("%w: %v (empty string stored)", ErrPlayerNotFound, username)
 	}
 
 	return GetPlayerByID(playerID, conn)
