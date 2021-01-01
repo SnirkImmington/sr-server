@@ -6,6 +6,7 @@ import (
 	"github.com/gomodule/redigo/redis"
 )
 
+// ErrNotAuthorized is an error for when a user cannot perform an action
 var ErrNotAuthorized = errors.New("not authorized")
 
 // LogPlayerIn checks username/gameID credentials and returns the relevant

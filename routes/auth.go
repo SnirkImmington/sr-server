@@ -50,7 +50,7 @@ func handleLogin(response Response, request *Request) {
 		logf(request, "Error with redis operation: %v", err)
 		httpInternalErrorIf(response, request, err)
 	}
-	logf(request, "found %v in %v", player.ID, login.GameID)
+	logf(request, "Found %v in %v", player.ID, login.GameID)
 
 	logf(request, "Creating session %s for %v", status, player.ID)
 	session, err := sr.NewPlayerSession(login.GameID, player, login.Persist, conn)
