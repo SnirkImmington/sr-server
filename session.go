@@ -9,29 +9,21 @@ import (
 )
 
 // Session is a temporary or persistent authentication token for users.
+// Sessions are checked by redis for each authenticated endpoint hit.
 //
 // Sessions are used in order to track authenticated requests over
 // remote calls by passing their IDs.
-//
-// Sessions are checked by redis for each authenticated endpoint hit.
-// In addition to IDs of the auth'd player and game, sessions contain
-// commonly-used data, such as the player name, in order to reduce the
-// number of database requests handlers make. This data must be kept up to
-// date in the session if it is modified elsewhere.
 //
 // Temporary sessions are set to expire with a short TTL when the user is not
 // reading from a game subscription.
 //
 // Persistent sessions are set to expire with a longer-term TTL.
 type Session struct {
-	// Immutable fields: make a new Session
 	ID       UID    `redis:"-"`
 	GameID   string `redis:"gameID"`
 	PlayerID UID    `redis:"playerID"`
 	Persist  bool   `redis:"persist"`
 	Username string `redis:"username"`
-	// Mutable fields: keep the session up to date with the game/player
-	// (none)
 }
 
 // Type returns "persist" for persistent sessions and "temp" for temp sessions.
@@ -42,7 +34,7 @@ func (s *Session) Type() string {
 	return "temp"
 }
 
-// LogInfo formats the session's player and game info for use in logging.
+// PlayerInfo formats the session's player and game info for use in logging.
 func (s *Session) PlayerInfo() string {
 	return fmt.Sprintf(
 		"%v (%v) in %v",
