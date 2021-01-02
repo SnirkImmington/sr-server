@@ -124,7 +124,7 @@ func GetInfo(gameID string, conn redis.Conn) (*Info, error) {
 
 // AddPlayer adds the given player to the given game
 func AddPlayer(player *player.Player, gameID string, conn redis.Conn) error {
-	updateBytes, err := json.Marshal(update.ForPlayerAdd(player))
+	updateBytes, err := json.Marshal(update.ForPlayerAdd(player.Info()))
 	if err != nil {
 		return fmt.Errorf("error creating add player update for %v: %w", player, err)
 	}

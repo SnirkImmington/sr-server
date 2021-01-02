@@ -1,17 +1,17 @@
 package game
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/gomodule/redigo/redis"
 	"sr/id"
-	"sr/player"
 	"sr/update"
 )
 
 // UpdatePlayer updates a player in the database.
 // It does not allow for username updates. It only publishes the update to the given game.
 func UpdatePlayer(gameID string, playerID id.UID, update update.Player, conn redis.Conn) error {
-	playerData := redis.Args{}.Add("player:" + playerID).AddFlat(update.Diff)
+	playerData := update.MakeRedisArgs()
 	updateBytes, err := json.Marshal(update)
 	if err != nil {
 		return fmt.Errorf("unable to marshal update to JSON :%w", err)

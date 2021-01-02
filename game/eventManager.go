@@ -1,12 +1,15 @@
 package game
 
 import (
+	"encoding/json"
+	"fmt"
+	"github.com/gomodule/redigo/redis"
 	"sr/event"
 	"sr/update"
 )
 
 // Post posts an event to Redis and returns the generated ID.
-func Post(gameID string, event Event, conn redis.Conn) error {
+func Post(gameID string, event event.Event, conn redis.Conn) error {
 	bytes, err := json.Marshal(event)
 	if err != nil {
 		return fmt.Errorf("unable to marshal event to JSON: %w", err)
@@ -29,16 +32,9 @@ func Post(gameID string, event Event, conn redis.Conn) error {
 	if err != nil {
 		return fmt.Errorf("redis error EXECing event post: %w", err)
 	}
-	if len(results) != 2 {
-		return fmt.Errorf("redis error posting event, expected 2 results, got %v", results)
+	if len(results) != 2 || results[0] != 1 {
+		return fmt.Errorf("redis error posting event, expected [1, *], got %v", results)
 	}
-	if results[0] != 1 {
-		log.Printf(
-			"Unexpected result from posting event: expected [1, *], got %v",
-			results,
-		)
-	}
-
 	return nil
 }
 
@@ -78,7 +74,7 @@ func Delete(gameID string, eventID int64, conn redis.Conn) error {
 }
 
 // Update replaces an event in the database and notifies players of the change.
-func Update(gameID string, newEvent Event, update update.Event, conn redis.Conn) error {
+func Update(gameID string, newEvent event.Event, update update.Event, conn redis.Conn) error {
 	eventID := newEvent.GetID()
 	eventBytes, err := json.Marshal(newEvent)
 	if err != nil {
