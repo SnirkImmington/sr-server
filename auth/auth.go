@@ -1,9 +1,11 @@
-package sr
+package auth
 
 import (
 	"errors"
 	"fmt"
 	"github.com/gomodule/redigo/redis"
+	"sr/game"
+	"sr/player"
 )
 
 // ErrNotAuthorized is an error for when a user cannot perform an action
@@ -14,15 +16,15 @@ var ErrNotAuthorized = errors.New("not authorized")
 //
 // Returns ErrPlayerNotFound if the username is not found, ErrGameNotFound if
 // the game is not found. These should not be distinguished to users.
-func LogPlayerIn(gameID string, username string, conn redis.Conn) (*GameInfo, *Player, error) {
-	player, err := GetPlayerByUsername(username, conn)
-	if errors.Is(err, ErrPlayerNotFound) {
+func LogPlayerIn(gameID string, username string, conn redis.Conn) (*game.Info, *player.Player, error) {
+	player, err := player.GetByUsername(username, conn)
+	if errors.Is(err, player.ErrPlayerNotFound) {
 		return nil, nil, fmt.Errorf("%w (%v logging into %v)", err, username, gameID)
 	} else if err != nil {
 		return nil, nil, fmt.Errorf("redis error getting %v: %w", username, err)
 	}
 
-	info, err := GetGameInfo(gameID, conn)
+	info, err := game.GetInfo(gameID, conn)
 	if errors.Is(err, ErrGameNotFound) {
 		return nil, nil, fmt.Errorf("when logging %v in to %v: %w", username, gameID, err)
 	} else if err != nil {
