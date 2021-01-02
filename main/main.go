@@ -21,7 +21,7 @@ const SHADOWROLLER = `
 `
 
 func runServer(name string, server http.Server, tls bool) {
-	log.Print("Running ", name, " server at ", server.Addr, "...")
+	log.Printf("Running %v server at %v...", name, server.Addr)
 
 	for {
 		var err error
@@ -41,7 +41,7 @@ func runServer(name string, server http.Server, tls bool) {
 			}
 			err = server.ListenAndServeTLS(pemFile, keyFile)
 		} else {
-			log.Print("HTTP server started.")
+			log.Print("HTTP (unencrypted) server started.")
 			err = server.ListenAndServe()
 		}
 
@@ -64,7 +64,6 @@ func main() {
 	}
 
 	log.Print("Starting up...")
-
 	rand.Seed(time.Now().UnixNano())
 	sr.BeginGeneratingRolls()
 	sr.SetupRedis()
@@ -72,13 +71,10 @@ func main() {
 	routes.RegisterTasksViaConfig()
 
 	log.Print("Shadowroller:", SHADOWROLLER, "\n")
-
 	err := routes.DisplaySiteRoutes()
 	if err != nil {
 		panic(fmt.Sprintf("Unable to walk routes: %v", err))
 	}
-
-	log.Print(config.HardcodedGameNames)
 
 	if config.PublishRedirect != "" {
 		redirectServer := routes.MakeHTTPRedirectServer()

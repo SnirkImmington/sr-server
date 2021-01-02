@@ -144,6 +144,9 @@ var (
 	// HardcodedGameNames is a comma-separated list of GameIDs which the server
 	// creates on startup.
 	HardcodedGameNames = readStringArray("GAME_NAMES", "test1,test2")
+	// HarcodedUsernames is a comma-separated list of usernames which the
+	// server creates on startup.
+	HardcodedUsernames = readStringArray("USERNAMES", "snirk,smark,smirk")
 	// RollBufferSize is the size of the channel buffer from the roll goroutine.
 	RollBufferSize = readInt("ROLL_BUFFER_SIZE", 200)
 	// MaxSingleRoll is the largest roll request the server will handle at once.
