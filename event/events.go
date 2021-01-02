@@ -1,4 +1,4 @@
-package sr
+package event
 
 import (
 	"encoding/json"
@@ -9,80 +9,6 @@ import (
 //
 // Roll
 //
-
-// EventTypeRoll is the type of `RollEvent`s.
-const EventTypeRoll = "roll"
-
-// RollEvent is triggered when a player rolls non-edge dice.
-type RollEvent struct {
-	EventCore
-	Title   string `json:"title"`
-	Dice    []int  `json:"dice"`
-	Glitchy int    `json:"glitchy"`
-}
-
-// RollEventCore makes the EventCore of a RollEvent.
-func RollEventCore(player *Player) EventCore {
-	return MakeEventCore(EventTypeRoll, player)
-}
-
-//
-// Edge Roll
-//
-
-// EventTypeEdgeRoll is the type of `EdgeRollEvent`s.
-const EventTypeEdgeRoll = "edgeRoll"
-
-// EdgeRollEvent is triggered when a player uses edge before a roll.
-type EdgeRollEvent struct {
-	EventCore
-	Title   string  `json:"title"`
-	Rounds  [][]int `json:"rounds"`
-	Glitchy int     `json:"glitchy"`
-}
-
-// EdgeRollEventCore makes the EventCore of an EdgeRollEvent.
-func EdgeRollEventCore(player *Player) EventCore {
-	return MakeEventCore("edgeRoll", player)
-}
-
-//
-// Reroll Failures
-//
-
-// EventTypeRerollFailures is the type of `RerollFailuresEvent`.
-const EventTypeRerollFailures = "rerollFailures"
-
-// RerollFailuresEvent is triggered when a player uses edge for Second Chance
-// on a roll.
-type RerollFailuresEvent struct {
-	EventCore
-	PrevID  int64   `json:"prevID"`
-	Title   string  `json:"title"`
-	Rounds  [][]int `json:"rounds"`
-	Glitchy int     `json:"glitchy"`
-}
-
-// RerollFailuresEventCore makes the EventCore of a RerollFailuresEvent.
-func RerollFailuresEventCore(player *Player) EventCore {
-	return MakeEventCore(EventTypeRerollFailures, player)
-}
-
-// EventTypeInitiativeRoll is the type of `InitiativeRollEvent`.
-const EventTypeInitiativeRoll = "initiativeRoll"
-
-// InitiativeRollEvent is an event for a player's initiative roll.
-type InitiativeRollEvent struct {
-	EventCore
-	Title string `json:"title"`
-	Base  int    `json:"base"`
-	Dice  []int  `json:"dice"`
-}
-
-// InitiativeRollEventCore makes the EventCore of an InitiativeRollEvent.
-func InitiativeRollEventCore(player *Player) EventCore {
-	return MakeEventCore(EventTypeInitiativeRoll, player)
-}
 
 //
 // Player Join
@@ -97,7 +23,7 @@ type PlayerJoinEvent struct {
 }
 
 // PlayerJoinEventCore makes the EventCore of a PlayerJoinEvent.
-func PlayerJoinEventCore(player *Player) EventCore {
+func PlayerJoinEventCore(player *sr.Player) EventCore {
 	return MakeEventCore(EventTypePlayerJoin, player)
 }
 
@@ -205,7 +131,7 @@ func ParseEvent(input []byte) (Event, error) {
 // MakeEventCore produces an EventCore of the given type using the given player.
 func MakeEventCore(ty string, player *Player) EventCore {
 	return EventCore{
-		ID:         NewEventID(),
+		ID:         sr.NewEventID(),
 		Type:       ty,
 		Edit:       0,
 		PlayerID:   player.ID,

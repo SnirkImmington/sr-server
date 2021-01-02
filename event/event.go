@@ -1,4 +1,4 @@
-package sr
+package event
 
 import (
 	"context"
@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"github.com/gomodule/redigo/redis"
 	"log"
+	"sr"
+	"sr/update"
 	"strconv"
 	"strings"
 )
 
-// PostEvent posts an event to Redis and returns the generated ID.
-func PostEvent(gameID string, event Event, conn redis.Conn) error {
+// Post posts an event to Redis and returns the generated ID.
+func Post(gameID string, event Event, conn redis.Conn) error {
 	bytes, err := json.Marshal(event)
 	if err != nil {
 		return fmt.Errorf("unable to marshal event to JSON: %w", err)
@@ -47,9 +49,9 @@ func PostEvent(gameID string, event Event, conn redis.Conn) error {
 	return nil
 }
 
-// DeleteEvent removes an event from a game and updates the game's connected players.
-func DeleteEvent(gameID string, eventID int64, conn redis.Conn) error {
-	updateBytes, err := json.Marshal(EventDeleteUpdate(eventID))
+// Delete removes an event from a game and updates the game's connected players.
+func Delete(gameID string, eventID int64, conn redis.Conn) error {
+	updateBytes, err := json.Marshal(update.ForEventDelete(eventID))
 	if err != nil {
 		return fmt.Errorf("redis error marshalling event delete update: %w", err)
 	}
@@ -82,8 +84,8 @@ func DeleteEvent(gameID string, eventID int64, conn redis.Conn) error {
 	return nil
 }
 
-// UpdateEvent replaces an event in the database and notifies players of the change.
-func UpdateEvent(gameID string, newEvent Event, update EventUpdate, conn redis.Conn) error {
+// Update replaces an event in the database and notifies players of the change.
+func Update(gameID string, newEvent Event, update update.Event, conn redis.Conn) error {
 	eventID := newEvent.GetID()
 	eventBytes, err := json.Marshal(newEvent)
 	if err != nil {
@@ -134,8 +136,8 @@ func UpdateEvent(gameID string, newEvent Event, update EventUpdate, conn redis.C
 	return nil
 }
 
-// EventByID retrieves a single event from Redis via its ID.
-func EventByID(gameID string, eventID int64, conn redis.Conn) (string, error) {
+// ByID retrieves a single event from Redis via its ID.
+func ByID(gameID string, eventID int64, conn redis.Conn) (string, error) {
 	events, err := redis.Strings(conn.Do(
 		"ZREVRANGEBYSCORE",
 		"history:"+gameID,
@@ -151,18 +153,18 @@ func EventByID(gameID string, eventID int64, conn redis.Conn) (string, error) {
 	return events[0], nil
 }
 
-// LatestEvents retrieves the latest count history events for the given game.
-func LatestEvents(gameID string, count int, conn redis.Conn) ([]string, error) {
-	return EventsOlderThan(gameID, "+inf", count, conn)
+// GetLatest retrieves the latest count history events for the given game.
+func GetLatest(gameID string, count int, conn redis.Conn) ([]string, error) {
+	return GetOlderThan(gameID, "+inf", count, conn)
 }
 
-// EventsOlderThan retrieves a range of history events older than the given event.
-func EventsOlderThan(gameID string, newest string, count int, conn redis.Conn) ([]string, error) {
-	return EventsBetween(gameID, newest, "-inf", count, conn)
+// GetOlderThan retrieves a range of history events older than the given event.
+func GetOlderThan(gameID string, newest string, count int, conn redis.Conn) ([]string, error) {
+	return GetBetween(gameID, newest, "-inf", count, conn)
 }
 
-// EventsBetween returns up to count events between the given newest and oldest IDs.
-func EventsBetween(gameID string, newest string, oldest string, count int, conn redis.Conn) ([]string, error) {
+// GetBetween returns up to count events between the given newest and oldest IDs.
+func GetBetween(gameID string, newest string, oldest string, count int, conn redis.Conn) ([]string, error) {
 	events, err := redis.Strings(conn.Do(
 		"ZREVRANGEBYSCORE",
 		"history:"+gameID,
@@ -176,8 +178,8 @@ func EventsBetween(gameID string, newest string, oldest string, count int, conn 
 	return events, nil
 }
 
-// ValidEventID returns whether the non-empty-string id is valid.
-func ValidEventID(id string) bool {
+// ValidID returns whether the non-empty-string id is valid.
+func ValidID(id string) bool {
 	_, err := strconv.ParseUint(id, 10, 64)
 	return err == nil
 }
