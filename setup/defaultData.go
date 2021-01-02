@@ -1,37 +1,15 @@
-package sr
+package setup
 
 import (
 	"fmt"
 	"github.com/gomodule/redigo/redis"
 	"log"
-	"os"
 	"sr/config"
+	"sr/game"
+	"sr/player"
+	redisUtil "sr/redis"
 	"strings"
-	"time"
 )
-
-var redisLogger *log.Logger
-
-// RedisPool is the pool of redis connections
-var RedisPool = &redis.Pool{
-	MaxIdle:     10,
-	IdleTimeout: time.Duration(60) * time.Second,
-	Dial: func() (redis.Conn, error) {
-		conn, err := redis.DialURL(config.RedisURL)
-		if config.RedisDebug && err == nil {
-			return redis.NewLoggingConn(conn, redisLogger, "redis"), nil
-		}
-		return conn, err
-	},
-}
-
-// CloseRedis closes a redis connection and logs errors if they occur
-func CloseRedis(conn redis.Conn) {
-	err := conn.Close()
-	if err != nil {
-		log.Printf("Error closing redis connection: %v", err)
-	}
-}
 
 func addHardcodedGames(conn redis.Conn) error {
 	gameKeys, err := redis.Strings(conn.Do("keys", "game:*"))
@@ -98,12 +76,9 @@ func addHardcodedPlayers(conn redis.Conn) error {
 	return nil
 }
 
-// SetupRedis adds the game names from the config to Redis
+// AddGamesAndPlayers adds the game names from the config to Redis
 // and sets up Redis logging if enabled.
-func SetupRedis() {
-	if config.RedisDebug {
-		redisLogger = log.New(os.Stdout, "", log.Ltime|log.Lshortfile)
-	}
+func AddGamesAndPlayers() {
 	conn := RedisPool.Get()
 	defer CloseRedis(conn)
 
