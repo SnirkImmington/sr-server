@@ -1,4 +1,4 @@
-package sr
+package game
 
 import (
 	"encoding/json"
@@ -6,22 +6,25 @@ import (
 	"fmt"
 	"github.com/gomodule/redigo/redis"
 	"sr/config"
+	"sr/id"
+	"sr/player"
+	"sr/update"
 )
 
-// ErrGameNotFound means that a specified game does not exists
-var ErrGameNotFound = errors.New("game not found")
+// ErrNotFound means that a specified game does not exists
+var ErrNotFound = errors.New("game not found")
 
 // ErrTransactionAborted means that a transaction was aborted and should be retried
 var ErrTransactionAborted = errors.New("transaction aborted")
 
-// GameExists returns whether the given game exists in Redis.
-func GameExists(gameID string, conn redis.Conn) (bool, error) {
+// Exists returns whether the given game exists in Redis.
+func Exists(gameID string, conn redis.Conn) (bool, error) {
 	return redis.Bool(conn.Do("exists", "game:"+gameID))
 }
 
-// GetPlayersInGame retrieves the list of players in a game.
-// Returns ErrGameNotFound if the game is not found OR if it has no players.
-func GetPlayersInGame(gameID string, conn redis.Conn) ([]Player, error) {
+// GetPlayersIn retrieves the list of players in a game.
+// Returns ErrNotFound if the game is not found OR if it has no players.
+func GetPlayersIn(gameID string, conn redis.Conn) ([]player.Player, error) {
 	getPlayerMaps := func() ([]string, []interface{}, error) {
 		if _, err := conn.Do("WATCH", "players:"+gameID); err != nil {
 			return nil, nil, fmt.Errorf("redis error sending `WATCH`: %w", err)
@@ -34,7 +37,7 @@ func GetPlayersInGame(gameID string, conn redis.Conn) ([]Player, error) {
 			if _, err := conn.Do("UNWATCH"); err != nil {
 				return nil, nil, fmt.Errorf("redis error sending `UNWATCH`: %w", err)
 			}
-			return nil, nil, fmt.Errorf("%w: %v has no players", ErrGameNotFound, gameID)
+			return nil, nil, fmt.Errorf("%w: %v has no players", ErrNotFound, gameID)
 		}
 
 		if err = conn.Send("MULTI"); err != nil {
@@ -68,7 +71,7 @@ func GetPlayersInGame(gameID string, conn redis.Conn) ([]Player, error) {
 		playerIDs, playerMaps, err = getPlayerMaps()
 		if errors.Is(err, ErrTransactionAborted) {
 			continue
-		} else if errors.Is(err, ErrGameNotFound) {
+		} else if errors.Is(err, ErrNotFound) {
 			return nil, err
 		} else if err != nil {
 			return nil, fmt.Errorf("After %s attempt(s): %w", i+1, err)
@@ -79,10 +82,10 @@ func GetPlayersInGame(gameID string, conn redis.Conn) ([]Player, error) {
 		return nil, fmt.Errorf("Error after max attempts: %w", err)
 	}
 
-	players := make([]Player, len(playerMaps))
+	players := make([]player.Player, len(playerMaps))
 	for i, playerMap := range playerMaps {
 		err = redis.ScanStruct(playerMap.([]interface{}), &players[i])
-		players[i].ID = UID(playerIDs[i])
+		players[i].ID = id.UID(playerIDs[i])
 		if err != nil {
 			return nil, fmt.Errorf(
 				"redis error parsing #%v #%v: %w",
@@ -99,29 +102,29 @@ func GetPlayersInGame(gameID string, conn redis.Conn) ([]Player, error) {
 	return players, nil
 }
 
-// GameInfo represents basic info about a game that the frontend would want
+// Info represents basic info about a game that the frontend would want
 // by default, all at once.
-type GameInfo struct {
-	ID      string                `json:"id"`
-	Players map[string]PlayerInfo `json:"players"`
+type Info struct {
+	ID      string                 `json:"id"`
+	Players map[string]player.Info `json:"players"`
 }
 
-// GetGameInfo retrieves `GameInfo` for the given GameID
-func GetGameInfo(gameID string, conn redis.Conn) (*GameInfo, error) {
-	players, err := GetPlayersInGame(gameID, conn)
+// GetInfo retrieves `Info` for the given ID
+func GetInfo(gameID string, conn redis.Conn) (*Info, error) {
+	players, err := GetPlayersIn(gameID, conn)
 	if err != nil {
 		return nil, fmt.Errorf("error getting players in game %v: %w", gameID, err)
 	}
-	info := make(map[string]PlayerInfo, len(players))
+	info := make(map[string]player.Info, len(players))
 	for _, player := range players {
-		info[player.ID.String()] = player.Info()
+		info[string(player.ID)] = player.Info()
 	}
-	return &GameInfo{ID: gameID, Players: info}, nil
+	return &Info{ID: gameID, Players: info}, nil
 }
 
-// AddPlayerToGame adds the given player to the given game
-func AddPlayerToGame(player *Player, gameID string, conn redis.Conn) error {
-	updateBytes, err := json.Marshal(MakePlayerAddUpdate(player))
+// AddPlayer adds the given player to the given game
+func AddPlayer(player *player.Player, gameID string, conn redis.Conn) error {
+	updateBytes, err := json.Marshal(update.ForPlayerAdd(player))
 	if err != nil {
 		return fmt.Errorf("error creating add player update for %v: %w", player, err)
 	}
