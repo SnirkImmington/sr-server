@@ -1,10 +1,12 @@
-package sr
+package session
 
 import (
 	"errors"
 	"fmt"
 	"github.com/gomodule/redigo/redis"
 	"sr/config"
+	"sr/id"
+	"sr/player"
 	"time"
 )
 
@@ -19,9 +21,9 @@ import (
 //
 // Persistent sessions are set to expire with a longer-term TTL.
 type Session struct {
-	ID       UID    `redis:"-"`
+	ID       id.UID `redis:"-"`
 	GameID   string `redis:"gameID"`
-	PlayerID UID    `redis:"playerID"`
+	PlayerID id.UID `redis:"playerID"`
 	Persist  bool   `redis:"persist"`
 	Username string `redis:"username"`
 }
@@ -56,14 +58,10 @@ func (s *Session) redisKey() string {
 	return "session:" + string(s.ID)
 }
 
-// NewPlayerSession makes a new session for the given player name.
-func NewPlayerSession(gameID string, player *Player, persist bool, conn redis.Conn) (*Session, error) {
-	return MakeSession(gameID, player, persist, conn)
-}
-
+// New makes a new session for the given player.
 // MakeSession adds a session for the given player in the given game
-func MakeSession(gameID string, player *Player, persist bool, conn redis.Conn) (*Session, error) {
-	sessionID := GenSessionID()
+func New(gameID string, player *player.Player, persist bool, conn redis.Conn) (*Session, error) {
+	sessionID := id.GenSessionID()
 	session := Session{
 		ID:       sessionID,
 		GameID:   gameID,
@@ -77,7 +75,7 @@ func MakeSession(gameID string, player *Player, persist bool, conn redis.Conn) (
 	if err != nil {
 		return nil, fmt.Errorf("Redis error adding session %v: %w", sessionID, err)
 	}
-	_, err = ExpireSession(&session, conn)
+	_, err = Expire(&session, conn)
 	if err != nil {
 		return nil, fmt.Errorf("Redis error expiring session %v: %w", sessionID, err)
 	}
@@ -87,70 +85,58 @@ func MakeSession(gameID string, player *Player, persist bool, conn redis.Conn) (
 var errNilSession = errors.New("Nil sessionID requested")
 var errNoSessionData = errors.New("Session not found")
 
-// SessionExists returns whether the session exists in Redis.
-func SessionExists(sessionID string, conn redis.Conn) (bool, error) {
+// Exists returns whether the session exists in Redis.
+func Exists(sessionID string, conn redis.Conn) (bool, error) {
 	if sessionID == "" {
 		return false, errNilSession
 	}
 	return redis.Bool(conn.Do("exists", "session:"+sessionID))
 }
 
-// GetSessionByID retrieves a session from redis.
-func GetSessionByID(sessionID string, conn redis.Conn) (Session, error) {
+// GetByID retrieves a session from redis.
+func GetByID(sessionID string, conn redis.Conn) (*Session, error) {
 	if sessionID == "" {
-		return Session{}, errNilSession
+		return nil, errNilSession
 	}
 	var session Session
 	data, err := conn.Do("hgetall", "session:"+sessionID)
 	if err != nil {
-		return Session{}, fmt.Errorf("Redis error retrieving data for %v: %w", sessionID, err)
+		return nil, fmt.Errorf("Redis error retrieving data for %v: %w", sessionID, err)
 	}
 	if data == nil || len(data.([]interface{})) == 0 {
-		return Session{}, errNoSessionData
+		return nil, errNoSessionData
 	}
 	err = redis.ScanStruct(data.([]interface{}), &session)
 	if err != nil {
-		return Session{}, fmt.Errorf("Error parsing session struct: %w", err)
+		return nil, fmt.Errorf("Error parsing session struct: %w", err)
 	}
 	if session.GameID == "" || session.PlayerID == "" {
-		return Session{}, errNoSessionData
+		return nil, errNoSessionData
 	}
-	session.ID = UID(sessionID)
+	session.ID = id.UID(sessionID)
 
-	return session, nil
+	return &session, nil
 }
 
 // GetPlayer retrieves the full player info for a given session
-func (session *Session) GetPlayer(conn redis.Conn) (*Player, error) {
-	return GetPlayerByID(string(session.PlayerID), conn)
+func (s *Session) GetPlayer(conn redis.Conn) (*player.Player, error) {
+	return player.GetByID(string(s.PlayerID), conn)
 }
 
-// RemoveSession removes a session from Redis.
-func RemoveSession(session *Session, conn redis.Conn) error {
-	err := conn.Send("MULTI")
+// Remove removes a session from Redis.
+func (s *Session) Remove(conn redis.Conn) error {
+	result, err := redis.Int(conn.Do("DEL", s.redisKey()))
 	if err != nil {
-		return fmt.Errorf("Redis error queuing MULTI: %w", err)
+		return fmt.Errorf("sending redis DEL: %w", err)
 	}
-	err = conn.Send("DEL", session.redisKey())
-	if err != nil {
-		return fmt.Errorf("Redis error queuing DEL: %w", err)
+	if result != 1 {
+		return fmt.Errorf("expected 1 key deleted, got %v", result)
 	}
-	err = conn.Send("HDEL", "player:"+session.GameID, session.PlayerID)
-	if err != nil {
-		return fmt.Errorf("Redis error queuing HDEL: %w", err)
-	}
-	results, err := redis.Ints(conn.Do("EXEC"))
-	if err != nil {
-		return fmt.Errorf("Redis error EXECing: %w", err)
-	}
-	if len(results) == 2 && results[0] == 1 && results[1] == 1 {
-		return nil
-	}
-	return fmt.Errorf("Unexpected response from redis: %w", results)
+	return nil
 }
 
-// ExpireSession sets the session to expire in `config.SesssionExpirySecs`.
-func ExpireSession(session *Session, conn redis.Conn) (bool, error) {
+// Expire sets the session to expire in `config.SesssionExpirySecs`.
+func Expire(session *Session, conn redis.Conn) (bool, error) {
 	ttl := config.TempSessionTTLSecs
 	if session.Persist {
 		ttl = int(time.Duration(config.PersistSessionTTLDays*24) * time.Hour)
@@ -160,7 +146,7 @@ func ExpireSession(session *Session, conn redis.Conn) (bool, error) {
 	))
 }
 
-// UnexpireSession prevents the session from exipiring.
-func UnexpireSession(session *Session, conn redis.Conn) (bool, error) {
+// Unexpire prevents the session from exipiring.
+func Unexpire(session *Session, conn redis.Conn) (bool, error) {
 	return redis.Bool(conn.Do("persist", session.redisKey()))
 }
