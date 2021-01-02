@@ -2,6 +2,7 @@ package update
 
 import (
 	"encoding/json"
+	"github.com/gomodule/redigo/redis"
 	"sr/id"
 	"sr/player"
 )
@@ -11,11 +12,16 @@ type Player interface {
 	Update
 
 	PlayerID() id.UID
+	MakeRedisArgs() redis.Args
 }
 
 type playerDiff struct {
 	id   id.UID
 	diff map[string]interface{}
+}
+
+func (update *playerDiff) MakeRedisArgs() redis.Args {
+	return redis.Args{}.Add("player:" + update.id).AddFlat(update.diff)
 }
 
 func (update *playerDiff) Type() string {
@@ -56,6 +62,10 @@ func (update *playerAdd) PlayerID() id.UID {
 func (update *playerAdd) MarshalJSON() ([]byte, error) {
 	fields := []interface{}{UpdateTypePlayer, "add", update.info}
 	return json.Marshal(fields)
+}
+
+func (update *playerAdd) MakeRedisArgs() redis.Args {
+	panic("Called MakeRedisArgs() on PlayerAdd update")
 }
 
 // ForPlayerAdd constructs an update for adding a player to a game

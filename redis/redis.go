@@ -24,7 +24,7 @@ var pool = &redis.Pool{
 }
 
 // FromPool opens a connection from the redis pool
-func FromPool() redis.Conn {
+func Connect() redis.Conn {
 	return pool.Get()
 }
 

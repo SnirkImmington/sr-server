@@ -2,7 +2,8 @@ package routes
 
 import (
 	"errors"
-	"sr"
+	"sr/game"
+	"sr/player"
 )
 
 var authRouter = restRouter.PathPrefix("/auth").Subrouter()
