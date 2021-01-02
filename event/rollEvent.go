@@ -1,7 +1,7 @@
 package event
 
 import (
-	"sr"
+	"sr/player"
 )
 
 // EventTypeRoll is the type of `RollEvent`s.
@@ -16,7 +16,7 @@ type Roll struct {
 }
 
 // RollEventCore makes the EventCore of a RollEvent.
-func RollEventCore(player *sr.Player) EventCore {
+func RollEventCore(player *player.Player) EventCore {
 	return MakeEventCore(EventTypeRoll, player)
 }
 
@@ -36,7 +36,7 @@ type EdgeRoll struct {
 }
 
 // EdgeRollEventCore makes the EventCore of an EdgeRollEvent.
-func EdgeRollEventCore(player *sr.Player) EventCore {
+func EdgeRollEventCore(player *player.Player) EventCore {
 	return MakeEventCore("edgeRoll", player)
 }
 
@@ -58,6 +58,6 @@ type RerollFailures struct {
 }
 
 // RerollFailuresEventCore makes the EventCore of a RerollFailuresEvent.
-func RerollFailuresEventCore(player *sr.Player) EventCore {
+func RerollFailuresEventCore(player *player.Player) EventCore {
 	return MakeEventCore(EventTypeRerollFailures, player)
 }

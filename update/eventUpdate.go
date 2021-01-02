@@ -98,5 +98,5 @@ func (update *eventDelete) MarshalJSON() ([]byte, error) {
 
 // ForEventDelete constructs an update for deleting an event
 func ForEventDelete(eventID int64) Event {
-	return &eventDelUpdate{eventID}
+	return &eventDelete{eventID}
 }

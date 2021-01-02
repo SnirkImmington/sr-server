@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"sr/id"
+	"sr/player"
 )
 
 //
@@ -23,7 +25,7 @@ type PlayerJoinEvent struct {
 }
 
 // PlayerJoinEventCore makes the EventCore of a PlayerJoinEvent.
-func PlayerJoinEventCore(player *sr.Player) EventCore {
+func PlayerJoinEventCore(player *player.Player) EventCore {
 	return MakeEventCore(EventTypePlayerJoin, player)
 }
 
@@ -36,7 +38,7 @@ type EventCore struct {
 	ID         int64  `json:"id"`             // ID of the event
 	Type       string `json:"ty"`             // Type of the event
 	Edit       int64  `json:"edit,omitempty"` // Edit time of the event
-	PlayerID   UID    `json:"pID"`            // ID of the player who posted the event
+	PlayerID   id.UID `json:"pID"`            // ID of the player who posted the event
 	PlayerName string `json:"pName"`          // Name of the player who posted the event
 }
 
@@ -44,7 +46,7 @@ type EventCore struct {
 type Event interface {
 	GetID() int64
 	GetType() string
-	GetPlayerID() UID
+	GetPlayerID() id.UID
 	GetPlayerName() string
 	GetEdit() int64
 	SetEdit(edited int64)
@@ -61,7 +63,7 @@ func (core *EventCore) GetType() string {
 }
 
 // GetPlayerID returns the PlayerID of the player who triggered the event.
-func (core *EventCore) GetPlayerID() UID {
+func (core *EventCore) GetPlayerID() id.UID {
 	return core.PlayerID
 }
 
@@ -99,27 +101,27 @@ func ParseEvent(input []byte) (Event, error) {
 
 	switch ty {
 	case EventTypeRoll:
-		var roll RollEvent
+		var roll Roll
 		err = json.Unmarshal(input, &roll)
 		return &roll, err
 
 	case EventTypeEdgeRoll:
-		var edgeRoll EdgeRollEvent
+		var edgeRoll EdgeRoll
 		err = json.Unmarshal(input, &edgeRoll)
 		return &edgeRoll, err
 
 	case EventTypeRerollFailures:
-		var rerollFailures RerollFailuresEvent
+		var rerollFailures RerollFailures
 		err = json.Unmarshal(input, &rerollFailures)
 		return &rerollFailures, err
 
 	case EventTypeInitiativeRoll:
-		var initiativeRoll InitiativeRollEvent
+		var initiativeRoll InitiativeRoll
 		err = json.Unmarshal(input, &initiativeRoll)
 		return &initiativeRoll, err
 
 	case EventTypePlayerJoin:
-		var playerJoin PlayerJoinEvent
+		var playerJoin PlayerJoin
 		err = json.Unmarshal(input, &playerJoin)
 		return &playerJoin, err
 
@@ -129,9 +131,9 @@ func ParseEvent(input []byte) (Event, error) {
 }
 
 // MakeEventCore produces an EventCore of the given type using the given player.
-func MakeEventCore(ty string, player *Player) EventCore {
+func MakeEventCore(ty string, player *player.Player) EventCore {
 	return EventCore{
-		ID:         sr.NewEventID(),
+		ID:         id.NewEventID(),
 		Type:       ty,
 		Edit:       0,
 		PlayerID:   player.ID,

@@ -1,7 +1,7 @@
 package event
 
 import (
-	"sr"
+	"sr/player"
 )
 
 // EventTypeInitiativeRoll is the type of `InitiativeRollEvent`.
@@ -16,6 +16,6 @@ type InitiativeRoll struct {
 }
 
 // InitiativeRollEventCore makes the EventCore of an InitiativeRollEvent.
-func InitiativeRollEventCore(player *sr.Player) EventCore {
+func InitiativeRollEventCore(player *player.Player) EventCore {
 	return MakeEventCore(EventTypeInitiativeRoll, player)
 }
