@@ -43,8 +43,8 @@ func (update *eventDiff) MarshalJSON() ([]byte, error) {
 	return json.Marshal(fields)
 }
 
-func makeEventDiff(event sr.Event) eventDiff {
-	return &eventDiff{
+func makeEventDiff(event event.Event) eventDiff {
+	return eventDiff{
 		id:   event.GetID(),
 		time: event.GetEdit(),
 		diff: make(map[string]interface{}),
@@ -61,7 +61,7 @@ func ForEventDiff(event event.Event, diff map[string]interface{}) Event {
 }
 
 // ForEventRename constructs an update for renaming an event
-func ForEventRename(event sr.Event, newTitle string) Event {
+func ForEventRename(event event.Event, newTitle string) Event {
 	update := makeEventDiff(event)
 	update.diff["title"] = newTitle
 	return &update
@@ -83,11 +83,11 @@ func (update *eventDelete) Type() string {
 	return UpdateTypeEvent
 }
 
-func (update *eventDelete) GetEventID() int64 {
+func (update *eventDelete) EventID() int64 {
 	return update.id
 }
 
-func (update *eventDelete) GetTime() int64 {
+func (update *eventDelete) Time() int64 {
 	return 0
 }
 

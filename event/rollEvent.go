@@ -9,55 +9,63 @@ const EventTypeRoll = "roll"
 
 // Roll is triggered when a player rolls non-edge dice.
 type Roll struct {
-	EventCore
+	core
 	Title   string `json:"title"`
 	Dice    []int  `json:"dice"`
 	Glitchy int    `json:"glitchy"`
 }
 
-// RollEventCore makes the EventCore of a RollEvent.
-func RollEventCore(player *player.Player) EventCore {
-	return MakeEventCore(EventTypeRoll, player)
+// ForRoll makes a RollEvent.
+func ForRoll(player *player.Player, title string, dice []int, glitchy int) Roll {
+	return Roll{
+		core:    makeCore(EventTypeRoll, player),
+		Title:   title,
+		Dice:    dice,
+		Glitchy: glitchy,
+	}
 }
-
-//
-// Edge Roll
-//
 
 // EventTypeEdgeRoll is the type of `EdgeRollEvent`s.
 const EventTypeEdgeRoll = "edgeRoll"
 
 // EdgeRoll is triggered when a player uses edge before a roll.
 type EdgeRoll struct {
-	EventCore
+	core
 	Title   string  `json:"title"`
 	Rounds  [][]int `json:"rounds"`
 	Glitchy int     `json:"glitchy"`
 }
 
-// EdgeRollEventCore makes the EventCore of an EdgeRollEvent.
-func EdgeRollEventCore(player *player.Player) EventCore {
-	return MakeEventCore("edgeRoll", player)
+// ForEdgeRoll makes an EdgeRollEvent.
+func ForEdgeRoll(player *player.Player, title string, rounds [][]int, glitchy int) EdgeRoll {
+	return EdgeRoll{
+		core:    makeCore(EventTypeEdgeRoll, player),
+		Title:   title,
+		Rounds:  rounds,
+		Glitchy: glitchy,
+	}
 }
 
-//
-// Reroll Failures
-//
+// EventTypeReroll is the type of `Reroll` events.
+const EventTypeReroll = "rerollFailures"
 
-// EventTypeRerollFailures is the type of `RerollFailuresEvent`.
-const EventTypeRerollFailures = "rerollFailures"
-
-// RerollFailures is triggered when a player uses edge for Second Chance
+// Reroll is triggered when a player uses edge for Second Chance
 // on a roll.
-type RerollFailures struct {
-	EventCore
+type Reroll struct {
+	core
 	PrevID  int64   `json:"prevID"`
 	Title   string  `json:"title"`
 	Rounds  [][]int `json:"rounds"`
 	Glitchy int     `json:"glitchy"`
 }
 
-// RerollFailuresEventCore makes the EventCore of a RerollFailuresEvent.
-func RerollFailuresEventCore(player *player.Player) EventCore {
-	return MakeEventCore(EventTypeRerollFailures, player)
+// ForReroll constructs a Reroll
+func ForReroll(player *player.Player, previous *Roll, rounds [][]int) Reroll {
+	return Reroll{
+		core:    makeCore(EventTypeReroll, player),
+		PrevID:  previous.ID,
+		Title:   previous.Title,
+		Rounds:  rounds,
+		Glitchy: previous.Glitchy,
+	}
 }

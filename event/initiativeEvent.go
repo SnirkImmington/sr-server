@@ -9,13 +9,18 @@ const EventTypeInitiativeRoll = "initiativeRoll"
 
 // InitiativeRoll is an event for a player's initiative roll.
 type InitiativeRoll struct {
-	EventCore
+	core
 	Title string `json:"title"`
 	Base  int    `json:"base"`
 	Dice  []int  `json:"dice"`
 }
 
-// InitiativeRollEventCore makes the EventCore of an InitiativeRollEvent.
-func InitiativeRollEventCore(player *player.Player) EventCore {
-	return MakeEventCore(EventTypeInitiativeRoll, player)
+// ForInitiativeRoll makes an InitiativeRollEvent.
+func ForInitiativeRoll(player *player.Player, title string, base int, dice []int) InitiativeRoll {
+	return InitiativeRoll{
+		core:  makeCore(EventTypeInitiativeRoll, player),
+		Title: title,
+		Base:  base,
+		Dice:  dice,
+	}
 }

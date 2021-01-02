@@ -2,7 +2,7 @@ package update
 
 import (
 	"encoding/json"
-	"github.com/gomodule/redigo/redis"
+	"sr/id"
 	"sr/player"
 )
 
@@ -10,12 +10,11 @@ import (
 type Player interface {
 	Update
 
-	PlayerID() UID
-	ApplyToGame(gameID string, conn redis.Conn)
+	PlayerID() id.UID
 }
 
 type playerDiff struct {
-	id   UID
+	id   id.UID
 	diff map[string]interface{}
 }
 
@@ -23,7 +22,7 @@ func (update *playerDiff) Type() string {
 	return UpdateTypePlayer
 }
 
-func (update *playerDiff) PlayerID() UID {
+func (update *playerDiff) PlayerID() id.UID {
 	return update.id
 }
 
@@ -35,7 +34,7 @@ func (update *playerDiff) MarshalJSON() ([]byte, error) {
 }
 
 // ForPlayerDiff constructs an update for a player's info changing
-func ForPlayerDiff(playerID UID, diff map[string]interface{}) Player {
+func ForPlayerDiff(playerID id.UID, diff map[string]interface{}) Player {
 	return &playerDiff{
 		id:   playerID,
 		diff: diff,
@@ -43,23 +42,23 @@ func ForPlayerDiff(playerID UID, diff map[string]interface{}) Player {
 }
 
 type playerAdd struct {
-	info PlayerInfo
+	info player.Info
 }
 
 func (update *playerAdd) Type() string {
 	return UpdateTypePlayer
 }
 
-func (update *playerAdd) PlayerID() UID {
-	return update.Info.ID
+func (update *playerAdd) PlayerID() id.UID {
+	return update.info.ID
 }
 
 func (update *playerAdd) MarshalJSON() ([]byte, error) {
-	fields := []interface{}{UpdateTypePlayer, "add", update.Info}
+	fields := []interface{}{UpdateTypePlayer, "add", update.info}
 	return json.Marshal(fields)
 }
 
 // ForPlayerAdd constructs an update for adding a player to a game
-func ForPlayerAdd(info sr.PlayerInfo) Player {
+func ForPlayerAdd(info player.Info) Player {
 	return &playerAdd{info}
 }
