@@ -2,7 +2,8 @@ package update
 
 import (
 	"encoding/json"
-	"sr"
+	"github.com/gomodule/redigo/redis"
+	"sr/player"
 )
 
 // Player is an update for players changing
@@ -10,6 +11,7 @@ type Player interface {
 	Update
 
 	PlayerID() UID
+	ApplyToGame(gameID string, conn redis.Conn)
 }
 
 type playerDiff struct {

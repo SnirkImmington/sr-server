@@ -2,7 +2,7 @@ package update
 
 import (
 	"encoding/json"
-	"sr"
+	"sr/event"
 )
 
 // Event is the interface for updates to events
@@ -52,11 +52,11 @@ func makeEventDiff(event sr.Event) eventDiff {
 }
 
 // ForEventDiff constructs an update for an event changing
-func ForEventDiff(event sr.Event, diff map[string]interface{}) Event {
+func ForEventDiff(event event.Event, diff map[string]interface{}) Event {
 	return &eventDiff{
 		id:   event.GetID(),
 		time: event.GetEdit(),
-		eiff: diff,
+		diff: diff,
 	}
 }
 
@@ -68,7 +68,7 @@ func ForEventRename(event sr.Event, newTitle string) Event {
 }
 
 // ForSecondChance constructs an update for a second chance roll.
-func ForSecondChance(event sr.Event, round []int) Event {
+func ForSecondChance(event event.Event, round []int) Event {
 	update := makeEventDiff(event)
 	update.diff["reroll"] = round
 	return &update
@@ -98,5 +98,5 @@ func (update *eventDelete) MarshalJSON() ([]byte, error) {
 
 // ForEventDelete constructs an update for deleting an event
 func ForEventDelete(eventID int64) Event {
-	return &EventDelUpdate{eventID}
+	return &eventDelUpdate{eventID}
 }
