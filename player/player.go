@@ -1,4 +1,4 @@
-package sr
+package player
 
 import (
 	"encoding/json"
@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/gomodule/redigo/redis"
 	"math/rand"
+	"sr/update"
 	"strings"
 )
 
@@ -17,16 +18,15 @@ var ErrPlayerNotFound = errors.New("player not found")
 // Players may be registered for a number of games.
 // Within those games, they may have a number of chars.
 type Player struct {
-	ID       UID    `json:"id" redis:"-"`
+	ID       sr.UID `json:"id" redis:"-"`
 	Username string `json:"username" redis:"uname"`
 	Name     string `json:"name" redis:"name"`
 	Hue      int    `json:"hue" redis:"hue"`
 }
 
-// PlayerInfo is data other players can see about a player.
-//
+// Info is data other players can see about a player.
 // - `username` is not shown.
-type PlayerInfo struct {
+type Info struct {
 	ID   UID    `json:"id"`
 	Name string `json:"name"`
 	Hue  int    `json:"hue"`
@@ -39,36 +39,36 @@ func (p *Player) String() string {
 }
 
 // Info returns game-readable information about the player
-func (p *Player) Info() PlayerInfo {
-	return PlayerInfo{
+func (p *Player) Info() Info {
+	return Info{
 		ID:   p.ID,
 		Name: p.Name,
 		Hue:  p.Hue,
 	}
 }
 
-func (p *Player) redisKey() string {
+// RedisKey is the key for acccessing player info from redis
+func (p *Player) RedisKey() string {
 	if p == nil || p.ID == "" {
 		panic("Attempted to call redisKey() on nil player")
 	}
 	return "player:" + string(p.ID)
 }
 
-// NewPlayer constructs a new Player object, giving it a UID
-func NewPlayer(username string, name string) Player {
+// MakePlayer constructs a new Player object, giving it a UID
+func MakePlayer(username string, name string) Player {
 	return Player{
-		ID:       GenUID(),
+		ID:       sr.GenUID(),
 		Username: username,
 		Name:     name,
-		Hue:      RandomPlayerHue(),
+		Hue:      RandomHue(),
 	}
 }
 
-var errNilPlayer = errors.New("nil PlayerID requested")
-var errNoPlayer = errors.New("player not found")
+var ErrNilPlayer = errors.New("nil PlayerID requested")
 
-// PlayerExists determines if a player with the given ID exists in the database
-func PlayerExists(playerID string, conn redis.Conn) (bool, error) {
+// Exists determines if a player with the given ID exists in the database
+func Exists(playerID string, conn redis.Conn) (bool, error) {
 	if playerID == "" {
 		return false, fmt.Errorf(
 			"empty PlayerID passed to PlayerExists: %w", errNilPlayer,
@@ -77,8 +77,8 @@ func PlayerExists(playerID string, conn redis.Conn) (bool, error) {
 	return redis.Bool(conn.Do("exists", "player:"+playerID))
 }
 
-// GetPlayerByID retrieves a player from Redis
-func GetPlayerByID(playerID string, conn redis.Conn) (*Player, error) {
+// GetByID retrieves a player from Redis
+func GetByID(playerID string, conn redis.Conn) (*Player, error) {
 	if playerID == "" {
 		return nil, fmt.Errorf(
 			"%w: empty PlayerID passed to GetPlayerByID", errNilPlayer,
@@ -115,8 +115,8 @@ func GetPlayerByID(playerID string, conn redis.Conn) (*Player, error) {
 	return &player, nil
 }
 
-// GetPlayerIDOf returns the playerID for the given username.
-func GetPlayerIDOf(username string, conn redis.Conn) (string, error) {
+// GetIDOf returns the playerID for the given username.
+func GetIDOf(username string, conn redis.Conn) (string, error) {
 	if username == "" {
 		return "", fmt.Errorf("%w: empty username passed to GetPlayerIDOf", errNilPlayer)
 	}
@@ -136,9 +136,9 @@ func GetPlayerIDOf(username string, conn redis.Conn) (string, error) {
 	return playerID, nil
 }
 
-// GetPlayerByUsername retrieves a player based on the username given.
+// GetByUsername retrieves a player based on the username given.
 // Returns ErrPlayerNotFound if no player is found.
-func GetPlayerByUsername(username string, conn redis.Conn) (*Player, error) {
+func GetByUsername(username string, conn redis.Conn) (*Player, error) {
 	if username == "" {
 		return nil, fmt.Errorf("empty username passed to GetPlayerByUsername")
 	}
@@ -153,17 +153,17 @@ func GetPlayerByUsername(username string, conn redis.Conn) (*Player, error) {
 		return nil, fmt.Errorf("%w: %v (empty string stored)", ErrPlayerNotFound, username)
 	}
 
-	return GetPlayerByID(playerID, conn)
+	return GetByID(playerID, conn)
 }
 
-// RandomPlayerHue creates a random hue value for a player
-func RandomPlayerHue() int {
+// RandomHue creates a random hue value for a player
+func RandomHue() int {
 	return rand.Intn(360)
 }
 
-// ValidPlayerName determines if a player name is valid.
+// ValidName determines if a player name is valid.
 // It checks for 1-32 chars with no newlines.
-func ValidPlayerName(name string) bool {
+func ValidName(name string) bool {
 	return len(name) > 0 && len(name) < 32 && !strings.ContainsAny(name, "\r\n")
 }
 
@@ -224,8 +224,8 @@ func GetPlayerChars(playerID UID, conn redis.Conn) ([]Char, error) {
 }
 */
 
-// CreatePlayer adds the given Player to the database
-func CreatePlayer(player *Player, conn redis.Conn) error {
+// Create adds the given Player to the database
+func Create(player *Player, conn redis.Conn) error {
 	err := conn.Send("MULTI")
 	if err != nil {
 		return fmt.Errorf("redis error sending `MULTI`: %w", err)
@@ -254,9 +254,9 @@ func CreatePlayer(player *Player, conn redis.Conn) error {
 	return nil
 }
 
-// UpdatePlayer updates a player in the database.
+// Update updates a player in the database.
 // It does not allow for username updates. It only publishes the update to the given game.
-func UpdatePlayer(gameID string, playerID UID, update *PlayerDiffUpdate, conn redis.Conn) error {
+func Update(gameID string, playerID UID, update update.Player, conn redis.Conn) error {
 	playerData := redis.Args{}.Add("player:" + playerID).AddFlat(update.Diff)
 	updateBytes, err := json.Marshal(update)
 	if err != nil {
