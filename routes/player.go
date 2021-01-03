@@ -2,7 +2,9 @@ package routes
 
 import (
 	"fmt"
-	"sr"
+	"sr/game"
+	"sr/player"
+	"sr/update"
 	"strings"
 )
 
@@ -22,7 +24,7 @@ func handleUpdatePlayer(response Response, request *Request) {
 	logf(request,
 		"%v requests update %v", sess.PlayerInfo(), requestDiff,
 	)
-	update := sr.MakePlayerDiffUpdate(sess.PlayerID)
+	diff := make(map[string]interface{})
 
 	for key, value := range requestDiff {
 		switch key {
@@ -32,26 +34,27 @@ func handleUpdatePlayer(response Response, request *Request) {
 				httpBadRequest(response, request, "name: expected string")
 			}
 			name = strings.TrimSpace(name)
-			if !sr.ValidPlayerName(name) {
+			if !player.ValidName(name) {
 				httpBadRequest(response, request, "name: invalid")
 			}
-			update.AddField("name", name)
+			diff["name"] = name
 		case "hue":
 			hue, ok := value.(int)
 			if !ok || hue < 0 || hue > 360 {
 				httpBadRequest(response, request, "hue: expected int 0-360")
 			}
-			update.AddField("hue", hue)
+			diff["hue"] = hue
 		default:
 			httpBadRequest(response, request,
 				fmt.Sprintf("Cannot update field %v", key),
 			)
 		}
 	}
-	// TODO update is only sent to a specific game. Need pubsub for players :/
-	err = sr.UpdatePlayer(sess.GameID, sess.PlayerID, &update, conn)
+	update := update.ForPlayerDiff(sess.PlayerID, diff)
+
+	err = game.UpdatePlayer(sess.GameID, sess.PlayerID, update, conn)
 	httpInternalErrorIf(response, request, err)
 	httpSuccess(response, request,
-		"Player ", sess.PlayerID, " update ", update.Diff,
+		"Player ", sess.PlayerID, " update ", diff,
 	)
 }

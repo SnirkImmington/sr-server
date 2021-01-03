@@ -5,8 +5,8 @@ import (
 	"encoding/base64"
 	"github.com/gomodule/redigo/redis"
 	"net/http"
-	"sr"
 	"sr/config"
+	redisUtil "sr/redis"
 	"strings"
 )
 
@@ -49,7 +49,7 @@ var _ = restRouter.HandleFunc("/health-check", handleHealthCheck).Methods("GET")
 func handleHealthCheck(response Response, request *Request) {
 	logRequest(request)
 
-	conn := sr.RedisPool.Get()
+	conn := redisUtil.Connect()
 	defer closeRedis(request, conn)
 
 	ok, err := redis.Bool(conn.Do("exists", "auth_version"))

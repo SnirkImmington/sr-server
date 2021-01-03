@@ -17,26 +17,26 @@ var ErrNotAuthorized = errors.New("not authorized")
 // Returns ErrPlayerNotFound if the username is not found, ErrGameNotFound if
 // the game is not found. These should not be distinguished to users.
 func LogPlayerIn(gameID string, username string, conn redis.Conn) (*game.Info, *player.Player, error) {
-	player, err := player.GetByUsername(username, conn)
-	if errors.Is(err, player.ErrPlayerNotFound) {
+	plr, err := player.GetByUsername(username, conn)
+	if errors.Is(err, player.ErrNotFound) {
 		return nil, nil, fmt.Errorf("%w (%v logging into %v)", err, username, gameID)
 	} else if err != nil {
 		return nil, nil, fmt.Errorf("redis error getting %v: %w", username, err)
 	}
 
 	info, err := game.GetInfo(gameID, conn)
-	if errors.Is(err, ErrGameNotFound) {
+	if errors.Is(err, game.ErrNotFound) {
 		return nil, nil, fmt.Errorf("when logging %v in to %v: %w", username, gameID, err)
 	} else if err != nil {
 		return nil, nil, fmt.Errorf("redis error fetching game info for %v: %w", gameID, err)
 	}
 
 	// Ensure player is in the game
-	if _, found := info.Players[string(player.ID)]; !found {
+	if _, found := info.Players[string(plr.ID)]; !found {
 		return nil, nil, fmt.Errorf(
 			"%w: player %v (%v) to %v",
-			ErrNotAuthorized, player.ID, username, gameID,
+			ErrNotAuthorized, plr.ID, username, gameID,
 		)
 	}
-	return info, player, nil
+	return info, plr, nil
 }

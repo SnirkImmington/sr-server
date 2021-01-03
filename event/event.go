@@ -9,8 +9,8 @@ import (
 	"strings"
 )
 
-// ByID retrieves a single event from Redis via its ID.
-func ByID(gameID string, eventID int64, conn redis.Conn) (string, error) {
+// GetByID retrieves a single event from Redis via its ID.
+func GetByID(gameID string, eventID int64, conn redis.Conn) (string, error) {
 	events, err := redis.Strings(conn.Do(
 		"ZREVRANGEBYSCORE",
 		"history:"+gameID,

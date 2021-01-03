@@ -8,6 +8,10 @@ import (
 	"regexp"
 	"sr"
 	"sr/config"
+	"sr/event"
+	"sr/game"
+	"sr/id"
+	"sr/update"
 	"strings"
 	"time"
 )
@@ -23,7 +27,7 @@ func handleInfo(response Response, request *Request) {
 	defer closeRedis(request, conn)
 	httpUnauthorizedIf(response, request, err)
 
-	info, err := sr.GetGameInfo(sess.GameID, conn)
+	info, err := game.GetInfo(sess.GameID, conn)
 	httpInternalErrorIf(response, request, err)
 
 	err = writeBodyJSON(response, &info)
@@ -58,23 +62,24 @@ func handleUpdateEvent(response Response, request *Request) {
 	logf(request,
 		"%s requests update %v", sess.PlayerInfo(), updateRequest,
 	)
-	eventText, err := sr.EventByID(sess.GameID, updateRequest.ID, conn)
+	eventText, err := event.GetByID(sess.GameID, updateRequest.ID, conn)
 	httpBadRequestIf(response, request, err)
 
-	event, err := sr.ParseEvent([]byte(eventText))
+	evt, err := event.Parse([]byte(eventText))
 	httpBadRequestIf(response, request, err)
 
-	if event.GetPlayerID() != sess.PlayerID {
+	if evt.GetPlayerID() != sess.PlayerID {
 		httpForbidden(response, request, "You may not update this event.")
 	}
-	if event.GetType() == sr.EventTypePlayerJoin {
+	if evt.GetType() == event.EventTypePlayerJoin {
 		httpForbidden(response, request, "You may not update this event.")
 	}
 
-	logf(request, "Event type %v found, updating", event.GetType())
-	updateTime := sr.NewEventID()
-	event.SetEdit(updateTime)
-	update := sr.MakeEventDiffUpdate(event)
+	logf(request, "Event type %v found, updating", evt.GetType())
+	updateTime := id.NewEventID()
+	evt.SetEdit(updateTime)
+	diff := make(map[string]interface{})
+	update := update.ForEventDiff(evt, diff)
 	for key, value := range updateRequest.Diff {
 		switch key {
 		// Title: the player can set the event title.
@@ -84,32 +89,32 @@ func handleUpdateEvent(response Response, request *Request) {
 				httpBadRequest(response, request, "Event diff: title: expected string")
 			}
 			// Title is common to many events to be worth type switch
-			titleField := reflect.Indirect(reflect.ValueOf(event)).FieldByName("Title")
+			titleField := reflect.Indirect(reflect.ValueOf(evt)).FieldByName("Title")
 			if !titleField.CanSet() {
 				httpInternalError(response, request, "Cannot set Title field")
 			}
 			titleField.SetString(title)
-			update.AddField("title", title)
+			diff["title"] = title
 		case "glitchy":
 			glitchy, ok := value.(float64)
 			if !ok {
 				httpBadRequest(response, request, "Event diff: glitchy: expected int")
 			}
-			glitchyField := reflect.Indirect(reflect.ValueOf(event)).FieldByName("Glitchy")
+			glitchyField := reflect.Indirect(reflect.ValueOf(evt)).FieldByName("Glitchy")
 			if !glitchyField.CanSet() {
 				httpInternalError(response, request, "Cannot set Glitchy field")
 			}
 			glitchyField.SetInt(int64(glitchy))
-			update.AddField("glitchy", glitchy)
+			diff["glitchy"] = glitchy
 		}
 	}
 
-	logf(request, "Event %v diff %v", event.GetID(), update.Diff)
+	logf(request, "Event %v diff %v", evt.GetID(), diff)
 
-	err = sr.UpdateEvent(sess.GameID, event, &update, conn)
+	err = game.UpdateEvent(sess.GameID, evt, update, conn)
 	httpInternalErrorIf(response, request, err)
 
-	httpSuccess(response, request, "Updated event ", event.GetID())
+	httpSuccess(response, request, "Updated event ", evt.GetID())
 }
 
 var _ = gameRouter.HandleFunc("/delete-roll", handleDeleteEvent).Methods("POST")
@@ -131,26 +136,26 @@ func handleDeleteEvent(response Response, request *Request) {
 	logf(request,
 		"%v requests to delete %v", sess.PlayerInfo(), delete.ID,
 	)
-	eventText, err := sr.EventByID(sess.GameID, delete.ID, conn)
+	eventText, err := event.GetByID(sess.GameID, delete.ID, conn)
 	httpBadRequestIf(response, request, err)
 
-	event, err := sr.ParseEvent([]byte(eventText))
+	evt, err := event.Parse([]byte(eventText))
 	httpBadRequestIf(response, request, err)
 
-	if event.GetPlayerID() != sess.PlayerID {
+	if evt.GetPlayerID() != sess.PlayerID {
 		httpForbidden(response, request, "You may not delete this event.")
 	}
-	if event.GetType() == sr.EventTypePlayerJoin {
+	if evt.GetType() == event.EventTypePlayerJoin {
 		httpForbidden(response, request, "You may not delete this event.")
 	}
 
 	logf(request,
-		"%v deleting %v %v", sess.PlayerInfo(), event.GetType(), event,
+		"%v deleting %#v", sess.PlayerInfo(), evt,
 	)
-	err = sr.DeleteEvent(sess.GameID, event.GetID(), conn)
+	err = game.DeleteEvent(sess.GameID, evt.GetID(), conn)
 	httpInternalErrorIf(response, request, err)
 
-	httpSuccess(response, request, "Deleted event ", event.GetID())
+	httpSuccess(response, request, "Deleted event ", evt.GetID())
 }
 
 type rollRequest struct {
@@ -183,39 +188,34 @@ func handleRoll(response Response, request *Request) {
 	player, err := sess.GetPlayer(conn)
 	httpInternalErrorIf(response, request, err)
 
-	var event sr.Event
+	var evt event.Event
 	// Note that roll generation is possibly blocking
 	if roll.Edge {
 		rolls := sr.ExplodingSixes(roll.Count)
 		logf(request, "%v: edge roll: %v",
 			sess.PlayerInfo(), rolls,
 		)
-		event = &sr.EdgeRollEvent{
-			EventCore: sr.EdgeRollEventCore(player),
-			Title:     roll.Title,
-			Rounds:    rolls,
-			Glitchy:   roll.Glitchy,
-		}
-
-	} else {
-		rolls := make([]int, roll.Count)
-		hits := sr.FillRolls(rolls)
-		logf(request, "%v rolls %v (%v hits)",
-			sess.PlayerInfo(), rolls, hits,
+		rollEvent := event.ForEdgeRoll(
+			player, roll.Title, rolls, roll.Glitchy,
 		)
-		event = &sr.RollEvent{
-			EventCore: sr.RollEventCore(player),
-			Title:     roll.Title,
-			Dice:      rolls,
-			Glitchy:   roll.Glitchy,
-		}
+		evt = &rollEvent
+	} else {
+		dice := make([]int, roll.Count)
+		hits := sr.FillRolls(dice)
+		logf(request, "%v rolls %v (%v hits)",
+			sess.PlayerInfo(), dice, hits,
+		)
+		rollEvent := event.ForRoll(
+			player, roll.Title, dice, roll.Glitchy,
+		)
+		evt = &rollEvent
 	}
 
-	err = sr.PostEvent(sess.GameID, event, conn)
+	err = game.PostEvent(sess.GameID, evt, conn)
 	httpInternalErrorIf(response, request, err)
 	httpSuccess(
 		response, request,
-		"OK; roll ", event.GetID(), " posted",
+		"OK; roll ", evt.GetID(), " posted",
 	)
 }
 
@@ -264,13 +264,10 @@ func handleRollInitiative(response Response, request *Request) {
 	logf(request, "%v rolls %v + %v for `%v`",
 		sess.PlayerInfo(), roll.Base, dice, roll.Title,
 	)
-	event := &sr.InitiativeRollEvent{
-		EventCore: sr.InitiativeRollEventCore(player),
-		Title:     roll.Title,
-		Base:      roll.Base,
-		Dice:      dice,
-	}
-	err = sr.PostEvent(sess.GameID, event, conn)
+	event := event.ForInitiativeRoll(
+		player, roll.Title, roll.Base, dice,
+	)
+	err = game.PostEvent(sess.GameID, &event, conn)
 	httpInternalErrorIf(response, request, err)
 	httpSuccess(
 		response, request,
@@ -303,9 +300,9 @@ func handleReroll(response Response, request *Request) {
 		reroll.RollID, sess.PlayerInfo(),
 	)
 
-	previousRollText, err := sr.EventByID(sess.GameID, reroll.RollID, conn)
+	previousRollText, err := event.GetByID(sess.GameID, reroll.RollID, conn)
 	httpInternalErrorIf(response, request, err)
-	var previousRoll sr.RollEvent
+	var previousRoll event.Roll
 	err = json.Unmarshal([]byte(previousRollText), &previousRoll)
 	if err != nil {
 		logf(request, "Expecting to parse previous roll")
@@ -315,26 +312,20 @@ func handleReroll(response Response, request *Request) {
 		previousRoll.Title, previousRoll.Dice,
 	)
 
+	player, err := sess.GetPlayer(conn)
+	httpInternalErrorIf(response, request, err)
+
 	if reroll.Type == sr.RerollTypeRerollFailures {
 		newRound := sr.RerollFailures(previousRoll.Dice)
 		if len(newRound) == 0 {
 			// Cannot reroll failures on all hits
 			httpBadRequest(response, request, "Invalid previous roll")
 		}
-		rerolled := sr.RerollFailuresEvent{
-			EventCore: sr.EventCore{
-				ID:         previousRoll.ID,
-				Edit:       sr.NewEventID(),
-				Type:       sr.EventTypeRerollFailures,
-				PlayerID:   previousRoll.PlayerID,
-				PlayerName: previousRoll.PlayerName,
-			},
-			PrevID: previousRoll.ID,
-			Title:  previousRoll.Title,
-			Rounds: [][]int{newRound, previousRoll.Dice},
-		}
-		update := sr.SecondChanceUpdate(&rerolled, newRound)
-		err = sr.UpdateEvent(sess.GameID, &rerolled, update, conn)
+		rerolled := event.ForReroll(
+			player, &previousRoll, [][]int{newRound, previousRoll.Dice},
+		)
+		update := update.ForSecondChance(&rerolled, newRound)
+		err = game.UpdateEvent(sess.GameID, &rerolled, update, conn)
 		httpInternalErrorIf(response, request, err)
 
 		httpSuccess(
@@ -380,7 +371,7 @@ func handleSubscription(response Response, request *Request) {
 	// Subscribe to redis
 	logf(request, "Opening pub/sub for %s", sess.String())
 	subCtx, cancel := context.WithCancel(request.Context())
-	messages, errChan := sr.SubscribeToGame(subCtx, sess.GameID)
+	messages, errChan := event.SubscribeToGame(subCtx, sess.GameID)
 	logf(request, "Game subscription successful")
 	select {
 	case firstErr := <-errChan:
@@ -391,11 +382,11 @@ func handleSubscription(response Response, request *Request) {
 	}
 
 	// Restart the session's month/15 min duration while streaming
-	_, err = sr.UnexpireSession(&sess, conn)
+	_, err = sess.Unexpire(conn)
 	httpInternalErrorIf(response, request, err)
 	logf(request, "Unexpired session %s", sess.ID)
 	defer func() {
-		if _, err := sr.ExpireSession(&sess, conn); err != nil {
+		if _, err := sess.Expire(conn); err != nil {
 			logf(request, "** Error expiring session %s: %v", sess.String(), err)
 		} else {
 			logf(request, "** Re-expired session %s", sess.String())
@@ -437,13 +428,13 @@ func handleSubscription(response Response, request *Request) {
 			var updateLog string
 			var messageID string
 			if body[0] == "update" {
-				messageID = fmt.Sprintf("%v", sr.NewEventID())
+				messageID = fmt.Sprintf("%v", id.NewEventID())
 				updateLog = fmt.Sprintf("update %v", body[1])
 			} else {
-				messageID = sr.ParseEventID(body[1])
+				messageID = event.ParseID(body[1])
 				updateLog = fmt.Sprintf(
 					"event %v %v",
-					sr.ParseEventTy(body[1]), messageID,
+					event.ParseTy(body[1]), messageID,
 				)
 			}
 			// channel := body[0] ; message := body[1]
@@ -470,9 +461,9 @@ func handleSubscription(response Response, request *Request) {
 }
 
 type eventRangeResponse struct {
-	Events []sr.Event `json:"events"`
-	LastID int64      `json:"lastID"`
-	More   bool       `json:"more"`
+	Events []event.Event `json:"events"`
+	LastID int64         `json:"lastID"`
+	More   bool          `json:"more"`
 }
 
 var _ = gameRouter.HandleFunc("/events", handleEvents).Methods("GET")
@@ -496,13 +487,13 @@ func handleEvents(response Response, request *Request) {
 
 	if newest == "" {
 		newest = "+inf"
-	} else if !sr.ValidEventID(newest) {
+	} else if !event.ValidID(newest) {
 		httpBadRequest(response, request, "Invalid newest ID")
 	}
 
 	if oldest == "" {
 		oldest = "-inf"
-	} else if !sr.ValidEventID(oldest) {
+	} else if !event.ValidID(oldest) {
 		httpBadRequest(response, request, "Invalid oldest ID")
 	}
 
@@ -510,7 +501,7 @@ func handleEvents(response Response, request *Request) {
 		oldest, newest, sess.PlayerInfo(),
 	)
 
-	events, err := sr.EventsBetween(
+	events, err := event.GetBetween(
 		sess.GameID, newest, oldest, config.MaxEventRange, conn,
 	)
 	if err != nil {
@@ -523,20 +514,20 @@ func handleEvents(response Response, request *Request) {
 
 	if len(events) == 0 {
 		eventRange = eventRangeResponse{
-			Events: []sr.Event{},
+			Events: []event.Event{},
 			LastID: 0,
 			More:   false,
 		}
 		message = "0 events"
 	} else {
-		parsed := make([]sr.Event, len(events))
-		for i, event := range events {
-			ev, err := sr.ParseEvent([]byte(event))
+		parsed := make([]event.Event, len(events))
+		for i, eventText := range events {
+			evt, err := event.Parse([]byte(eventText))
 			if err != nil {
 				err := fmt.Errorf("error parsing event %v: %w", i, err)
 				httpInternalErrorIf(response, request, err)
 			}
-			parsed[i] = ev
+			parsed[i] = evt
 		}
 		firstID := parsed[0].GetID()
 		lastID := parsed[len(parsed)-1].GetID()

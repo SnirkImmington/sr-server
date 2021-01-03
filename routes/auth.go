@@ -2,16 +2,19 @@ package routes
 
 import (
 	"errors"
+	"sr/auth"
 	"sr/game"
 	"sr/player"
+	redisUtil "sr/redis"
+	"sr/session"
 )
 
 var authRouter = restRouter.PathPrefix("/auth").Subrouter()
 
 type loginResponse struct {
-	Player   *sr.Player   `json:"player"`
-	GameInfo *sr.GameInfo `json:"game"`
-	Session  string       `json:"session"`
+	Player   *player.Player `json:"player"`
+	GameInfo *game.Info     `json:"game"`
+	Session  string         `json:"session"`
 }
 
 // POST /auth/login { gameID, playerName } -> auth token, session token
@@ -36,31 +39,31 @@ func handleLogin(response Response, request *Request) {
 		login.Username, login.GameID, status,
 	)
 
-	conn := sr.RedisPool.Get()
+	conn := redisUtil.Connect()
 	defer closeRedis(request, conn)
 
-	gameInfo, player, err := sr.LogPlayerIn(login.GameID, login.Username, conn)
+	gameInfo, plr, err := auth.LogPlayerIn(login.GameID, login.Username, conn)
 	if err != nil {
 		logf(request, "Login response: %v", err)
 	}
-	if errors.Is(err, sr.ErrPlayerNotFound) ||
-		errors.Is(err, sr.ErrGameNotFound) ||
-		errors.Is(err, sr.ErrNotAuthorized) {
+	if errors.Is(err, player.ErrNotFound) ||
+		errors.Is(err, game.ErrNotFound) ||
+		errors.Is(err, auth.ErrNotAuthorized) {
 		httpForbiddenIf(response, request, err)
 	} else if err != nil {
 		logf(request, "Error with redis operation: %v", err)
 		httpInternalErrorIf(response, request, err)
 	}
-	logf(request, "Found %v in %v", player.ID, login.GameID)
+	logf(request, "Found %v in %v", plr.ID, login.GameID)
 
-	logf(request, "Creating session %s for %v", status, player.ID)
-	session, err := sr.NewPlayerSession(login.GameID, player, login.Persist, conn)
+	logf(request, "Creating session %s for %v", status, plr.ID)
+	session, err := session.New(login.GameID, plr, login.Persist, conn)
 	httpInternalErrorIf(response, request, err)
-	logf(request, "Created session %v for %v", session.ID, player.ID)
+	logf(request, "Created session %v for %v", session.ID, plr.ID)
 	logf(request, "Got game info %v", gameInfo)
 
 	err = writeBodyJSON(response, loginResponse{
-		Player:   player,
+		Player:   plr,
 		GameInfo: gameInfo,
 		Session:  string(session.ID),
 	})
@@ -88,49 +91,53 @@ func handleReauth(response Response, request *Request) {
 		"Relogin request for session %v", requestSession,
 	)
 
-	conn := sr.RedisPool.Get()
+	conn := redisUtil.Connect()
 	defer closeRedis(request, conn)
 
-	session, err := sr.GetSessionByID(requestSession, conn)
+	sess, err := session.GetByID(requestSession, conn)
 	httpUnauthorizedIf(response, request, err)
-	logf(request, "Found session %s", session.String())
+	logf(request, "Found session %s", sess.String())
 
 	// Double check that the relevant items exist.
-	gameExists, err := sr.GameExists(session.GameID, conn)
+	gameExists, err := game.Exists(sess.GameID, conn)
 	httpInternalErrorIf(response, request, err)
 	if !gameExists {
-		logf(request, "Game %v does not exist", session.GameID)
-		err = sr.RemoveSession(&session, conn)
+		logf(request, "Game %v does not exist", sess.GameID)
+		err = sess.Remove(conn)
 		httpInternalErrorIf(response, request, err)
-		logf(request, "Removed session %v for deleted game %v", session.ID, session.PlayerID)
+		logf(request,
+			"Removed session %v for deleted game %v", sess.ID, sess.GameID,
+		)
 		httpUnauthorized(response, request, "Your session is now invalid")
 	}
-	logf(request, "Confirmed game %s exists", session.GameID)
+	logf(request, "Confirmed game %s exists", sess.GameID)
 
-	player, err := sr.GetPlayerByID(string(session.PlayerID), conn)
-	if errors.Is(err, sr.ErrPlayerNotFound) {
-		logf(request, "Player %v does not exist", session.PlayerID)
-		err = sr.RemoveSession(&session, conn)
+	plr, err := player.GetByID(string(sess.PlayerID), conn)
+	if errors.Is(err, player.ErrNotFound) {
+		logf(request, "Player %v does not exist", sess.PlayerID)
+		err = sess.Remove(conn)
 		httpInternalErrorIf(response, request, err)
-		logf(request, "Removed session %v for deleted player %v", session.ID, session.PlayerID)
+		logf(request,
+			"Removed session %v for deleted player %v", sess.ID, sess.PlayerID,
+		)
 		httpUnauthorized(response, request, "Your session is now invalid")
 	} else if err != nil {
 		httpInternalErrorIf(response, request, err)
 	}
-	logf(request, "Confirmed player %s exists", player.ID)
+	logf(request, "Confirmed player %s exists", plr.ID)
 
-	gameInfo, err := sr.GetGameInfo(session.GameID, conn)
+	gameInfo, err := game.GetInfo(sess.GameID, conn)
 	httpInternalErrorIf(response, request, err)
 
 	reauthed := loginResponse{
-		Player:   player,
+		Player:   plr,
 		GameInfo: gameInfo,
-		Session:  string(session.ID),
+		Session:  string(sess.ID),
 	}
 	err = writeBodyJSON(response, reauthed)
 	httpInternalErrorIf(response, request, err)
 	httpSuccess(response, request,
-		session.PlayerID, " reauthed for ", session.GameID,
+		sess.PlayerID, " reauthed for ", sess.GameID,
 	)
 }
 
@@ -144,7 +151,7 @@ func handleLogout(response Response, request *Request) {
 	defer closeRedis(request, conn)
 	httpUnauthorizedIf(response, request, err)
 
-	err = sr.RemoveSession(&sess, conn)
+	err = sess.Remove(conn)
 	httpInternalErrorIf(response, request, err)
 	logf(request, "Logged out %v", sess.PlayerInfo())
 

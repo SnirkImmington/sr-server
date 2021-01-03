@@ -8,8 +8,8 @@ import (
 	"sr/update"
 )
 
-// Post posts an event to Redis and returns the generated ID.
-func Post(gameID string, event event.Event, conn redis.Conn) error {
+// PostEvent posts an event to Redis and returns the generated ID.
+func PostEvent(gameID string, event event.Event, conn redis.Conn) error {
 	bytes, err := json.Marshal(event)
 	if err != nil {
 		return fmt.Errorf("unable to marshal event to JSON: %w", err)
@@ -38,8 +38,8 @@ func Post(gameID string, event event.Event, conn redis.Conn) error {
 	return nil
 }
 
-// Delete removes an event from a game and updates the game's connected players.
-func Delete(gameID string, eventID int64, conn redis.Conn) error {
+// DeleteEvent removes an event from a game and updates the game's connected players.
+func DeleteEvent(gameID string, eventID int64, conn redis.Conn) error {
 	updateBytes, err := json.Marshal(update.ForEventDelete(eventID))
 	if err != nil {
 		return fmt.Errorf("redis error marshalling event delete update: %w", err)
@@ -74,7 +74,7 @@ func Delete(gameID string, eventID int64, conn redis.Conn) error {
 }
 
 // Update replaces an event in the database and notifies players of the change.
-func Update(gameID string, newEvent event.Event, update update.Event, conn redis.Conn) error {
+func UpdateEvent(gameID string, newEvent event.Event, update update.Event, conn redis.Conn) error {
 	eventID := newEvent.GetID()
 	eventBytes, err := json.Marshal(newEvent)
 	if err != nil {

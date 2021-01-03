@@ -75,7 +75,7 @@ func New(gameID string, player *player.Player, persist bool, conn redis.Conn) (*
 	if err != nil {
 		return nil, fmt.Errorf("Redis error adding session %v: %w", sessionID, err)
 	}
-	_, err = Expire(&session, conn)
+	_, err = session.Expire(conn)
 	if err != nil {
 		return nil, fmt.Errorf("Redis error expiring session %v: %w", sessionID, err)
 	}
@@ -136,17 +136,17 @@ func (s *Session) Remove(conn redis.Conn) error {
 }
 
 // Expire sets the session to expire in `config.SesssionExpirySecs`.
-func Expire(session *Session, conn redis.Conn) (bool, error) {
+func (s *Session) Expire(conn redis.Conn) (bool, error) {
 	ttl := config.TempSessionTTLSecs
-	if session.Persist {
+	if s.Persist {
 		ttl = int(time.Duration(config.PersistSessionTTLDays*24) * time.Hour)
 	}
 	return redis.Bool(conn.Do(
-		"expire", session.redisKey(), ttl,
+		"expire", s.redisKey(), ttl,
 	))
 }
 
 // Unexpire prevents the session from exipiring.
-func Unexpire(session *Session, conn redis.Conn) (bool, error) {
-	return redis.Bool(conn.Do("persist", session.redisKey()))
+func (s *Session) Unexpire(conn redis.Conn) (bool, error) {
+	return redis.Bool(conn.Do("persist", s.redisKey()))
 }

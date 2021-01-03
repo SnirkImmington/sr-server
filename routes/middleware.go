@@ -1,12 +1,13 @@
 package routes
 
 import (
+	"errors"
 	"fmt"
 	"github.com/gomodule/redigo/redis"
 	"net/http"
 	"runtime/debug"
-	"sr"
 	"sr/config"
+	redisUtil "sr/redis"
 	"time"
 )
 
@@ -55,12 +56,16 @@ func localhostOnlyMiddleware(wrapped http.Handler) http.Handler {
 func recoveryMiddleware(wrapped http.Handler) http.Handler {
 	return http.HandlerFunc(func(response Response, request *Request) {
 		defer func() {
-			if err := recover(); err != nil {
-				if err == abortedRequestPanicMessage {
+			if errVal := recover(); errVal != nil {
+				if errVal == http.ErrAbortHandler {
+					return
+				}
+				err, ok := errVal.(error)
+				if ok && errors.Is(err, http.ErrAbortHandler) {
 					return
 				}
 				logf(request, "Panic serving %v %v: %v",
-					request.Method, request.URL, err,
+					request.Method, request.URL, errVal,
 				)
 				logf(request, string(debug.Stack()))
 				http.Error(response, "Internal Server Error", http.StatusInternalServerError)
@@ -74,7 +79,7 @@ func recoveryMiddleware(wrapped http.Handler) http.Handler {
 
 func rateLimitedMiddleware(wrapped http.Handler) http.Handler {
 	return http.HandlerFunc(func(response Response, request *Request) {
-		conn := sr.RedisPool.Get()
+		conn := redisUtil.Connect()
 		defer closeRedis(request, conn)
 
 		// Taken from https://redis.io/commands/incr#pattern-rate-limiter-1

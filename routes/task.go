@@ -6,8 +6,11 @@ import (
 	"fmt"
 	"github.com/gomodule/redigo/redis"
 	"net/http"
-	"sr"
 	"sr/config"
+	"sr/game"
+	"sr/id"
+	"sr/player"
+	redisUtil "sr/redis"
 	"strconv"
 	"strings"
 )
@@ -35,17 +38,17 @@ func handleCreateGame(response Response, request *Request) {
 		httpBadRequest(response, request, "Invalid game ID")
 	}
 
-	conn := sr.RedisPool.Get()
+	conn := redisUtil.Connect()
 	defer closeRedis(request, conn)
 
-	if exists, err := sr.GameExists(gameID, conn); exists {
+	if exists, err := game.Exists(gameID, conn); exists {
 		httpInternalErrorIf(response, request, err)
 		httpBadRequest(response, request, "Game already exists")
 	}
 
 	set, err := redis.Int(conn.Do(
 		"HSET", "game:"+gameID,
-		"created_at", sr.TimestampNow(),
+		"created_at", id.TimestampNow(),
 	))
 	httpInternalErrorIf(response, request, err)
 	if set != 1 {
@@ -67,10 +70,10 @@ func handleDeleteGame(response Response, request *Request) {
 		httpBadRequest(response, request, "Invalid game ID")
 	}
 
-	conn := sr.RedisPool.Get()
+	conn := redisUtil.Connect()
 	defer closeRedis(request, conn)
 
-	if exists, err := sr.GameExists(gameID, conn); !exists {
+	if exists, err := game.Exists(gameID, conn); !exists {
 		httpInternalErrorIf(response, request, err)
 		httpBadRequest(response, request, "Game does not exist")
 	}
@@ -94,7 +97,7 @@ var _ = tasksRouter.HandleFunc("/create-player", handleCreatePlayer).Methods("GE
 func handleCreatePlayer(response Response, request *Request) {
 	logRequest(request)
 
-	conn := sr.RedisPool.Get()
+	conn := redisUtil.Connect()
 	defer closeRedis(request, conn)
 
 	username := request.FormValue("uname")
@@ -105,10 +108,10 @@ func handleCreatePlayer(response Response, request *Request) {
 	if name == "" {
 		httpBadRequest(response, request, "Name `name` not specified")
 	}
-	id := sr.GenUID()
-	hue := sr.RandomPlayerHue()
+	id := id.GenUID()
+	hue := player.RandomHue()
 
-	player := sr.Player{
+	player := player.Player{
 		ID:       id,
 		Username: username,
 		Name:     name,
@@ -116,7 +119,7 @@ func handleCreatePlayer(response Response, request *Request) {
 	}
 	logf(request, "Created %#v", player)
 
-	err := sr.CreatePlayer(&player, conn)
+	err := game.CreatePlayer(&player, conn)
 	httpInternalErrorIf(response, request, err)
 	httpSuccess(response, request,
 		"Player ", player.Username, " created with ID ", player.ID,
