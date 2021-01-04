@@ -12,7 +12,7 @@ type Player interface {
 	Update
 
 	PlayerID() id.UID
-	MakeRedisArgs() redis.Args
+	MakeRedisCommand() (string, redis.Args)
 }
 
 type playerDiff struct {
@@ -20,8 +20,8 @@ type playerDiff struct {
 	diff map[string]interface{}
 }
 
-func (update *playerDiff) MakeRedisArgs() redis.Args {
-	return redis.Args{}.Add("player:" + update.id).AddFlat(update.diff)
+func (update *playerDiff) MakeRedisCommand() (string, redis.Args) {
+	return "HSET", redis.Args{}.Add("player:" + update.id).AddFlat(update.diff)
 }
 
 func (update *playerDiff) Type() string {
@@ -48,7 +48,7 @@ func ForPlayerDiff(playerID id.UID, diff map[string]interface{}) Player {
 }
 
 type playerAdd struct {
-	info player.Info
+	player *player.Player
 }
 
 func (update *playerAdd) Type() string {
@@ -56,19 +56,21 @@ func (update *playerAdd) Type() string {
 }
 
 func (update *playerAdd) PlayerID() id.UID {
-	return update.info.ID
+	return update.player.ID
 }
 
 func (update *playerAdd) MarshalJSON() ([]byte, error) {
-	fields := []interface{}{UpdateTypePlayer, "add", update.info}
+	fields := []interface{}{UpdateTypePlayer, "add", update.player.Info()}
 	return json.Marshal(fields)
 }
 
-func (update *playerAdd) MakeRedisArgs() redis.Args {
-	panic("Called MakeRedisArgs() on PlayerAdd update")
+func (update *playerAdd) MakeRedisCommand() (string, redis.Args) {
+	return "HSET", redis.Args{}.
+		Add("player:" + update.player.ID).
+		AddFlat(update.player)
 }
 
 // ForPlayerAdd constructs an update for adding a player to a game
-func ForPlayerAdd(info player.Info) Player {
-	return &playerAdd{info}
+func ForPlayerAdd(player *player.Player) Player {
+	return &playerAdd{player}
 }
