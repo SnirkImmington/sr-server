@@ -12,20 +12,28 @@ var playerRouter = restRouter.PathPrefix("/player").Subrouter()
 
 var _ = playerRouter.HandleFunc("/update", handleUpdatePlayer).Methods("POST")
 
+type playerUpdateRequest struct {
+	Diff map[string]interface{} `json:"diff"`
+}
+
 func handleUpdatePlayer(response Response, request *Request) {
 	logRequest(request)
 	sess, conn, err := requestSession(request)
 	defer closeRedis(request, conn)
 	httpUnauthorizedIf(response, request, err)
 
-	var requestDiff map[string]interface{}
-	err = readBodyJSON(request, &requestDiff)
+	var updateRequest playerUpdateRequest
+	err = readBodyJSON(request, &updateRequest)
 	httpUnauthorizedIf(response, request, err)
+	requestDiff := updateRequest.Diff
+	if len(requestDiff) == 0 {
+		httpBadRequest(response, request, "empty diff request")
+	}
 	logf(request,
-		"%v requests update %v", sess.PlayerInfo(), requestDiff,
+		"%v requests update %v", sess.PlayerInfo(), updateRequest.Diff,
 	)
-	diff := make(map[string]interface{})
 
+	diff := make(map[string]interface{}, len(requestDiff))
 	for key, value := range requestDiff {
 		switch key {
 		case "name":
@@ -39,17 +47,18 @@ func handleUpdatePlayer(response Response, request *Request) {
 			}
 			diff["name"] = name
 		case "hue":
-			hue, ok := value.(int)
+			hue, ok := value.(float64)
 			if !ok || hue < 0 || hue > 360 {
 				httpBadRequest(response, request, "hue: expected int 0-360")
 			}
-			diff["hue"] = hue
+			diff["hue"] = int(hue)
 		default:
 			httpBadRequest(response, request,
 				fmt.Sprintf("Cannot update field %v", key),
 			)
 		}
 	}
+	logf(request, "Created update %#v", diff)
 	update := update.ForPlayerDiff(sess.PlayerID, diff)
 
 	err = game.UpdatePlayer(sess.GameID, sess.PlayerID, update, conn)
