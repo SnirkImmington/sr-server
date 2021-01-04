@@ -363,16 +363,17 @@ func handleSubscription(response Response, request *Request) {
 	httpUnauthorizedIf(response, request, err)
 	defer closeRedis(request, conn)
 
+	logf(request, "Player %v to connect to %v", sess.PlayerID, sess.GameID)
+
 	// Upgrade to SSE stream
-	logf(request, "Upgrading to SSE")
 	stream, err := sseUpgrader.Upgrade(response, request)
 	httpInternalErrorIf(response, request, err)
+	logf(request, "Upgraded to SSE")
 
 	// Subscribe to redis
-	logf(request, "Opening pub/sub for %s", sess.String())
 	subCtx, cancel := context.WithCancel(request.Context())
 	messages, errChan := event.SubscribeToGame(subCtx, sess.GameID)
-	logf(request, "Game subscription successful")
+	logf(request, "Subscription to %v successful", sess.GameID)
 	select {
 	case firstErr := <-errChan:
 		logf(request, "Error initially opening game subscription: %v", firstErr)
@@ -381,37 +382,42 @@ func handleSubscription(response Response, request *Request) {
 		// No error connecting
 	}
 
-	// Restart the session's month/15 min duration while streaming
-	_, err = sess.Unexpire(conn)
+	// Reset session timer, also reset on close
+	_, err = sess.Expire(conn)
 	httpInternalErrorIf(response, request, err)
-	logf(request, "Unexpired session %s", sess.ID)
+	logf(request, "Reset timer for session %v", sess.String())
 	defer func() {
 		if _, err := sess.Expire(conn); err != nil {
-			logf(request, "** Error expiring session %s: %v", sess.String(), err)
+			logf(request, "** Error resetting session timer for %v: %v", sess.String, err)
 		} else {
-			logf(request, "** Re-expired session %s", sess.String())
+			logf(request, "** Reset session timer for %v", sess.String())
 		}
 	}()
 
-	err = stream.WriteStringEvent("", "")
-	lastPing := time.Now()
+	pingStream := func() error {
+		pingID := fmt.Sprintf("%v", id.NewEventID())
+		return stream.WriteEventWithID(pingID, "ping", []byte{})
+	}
+	err = pingStream()
 	if err != nil {
 		logf(request, "Unable to write initial ping: %v", err)
 		return
 	}
+	lastPing := time.Now()
 
 	// Begin writing events
 	logf(request, "Begin receiving events...")
 	ssePingInterval := time.Duration(config.SSEPingSecs) * time.Second
 	for {
 		const pollInterval = time.Duration(2) * time.Second
+		const reexpireInterval = time.Duration(1) * time.Minute
 		now := time.Now()
 		if !stream.IsOpen() {
 			logf(request, "Connection closed by remote host")
 			break
 		}
 		if now.Sub(lastPing) >= ssePingInterval {
-			err = stream.WriteStringEvent("", "")
+			err = pingStream()
 			if err != nil {
 				logf(request, "Unable to write to stream: %v", err)
 				break
