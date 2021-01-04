@@ -23,7 +23,7 @@ var pool = &redis.Pool{
 	},
 }
 
-// FromPool opens a connection from the redis pool
+// Connect opens a connection from the redis pool
 func Connect() redis.Conn {
 	return pool.Get()
 }
@@ -36,6 +36,7 @@ func Close(conn redis.Conn) {
 	}
 }
 
+// SetupWithConfig sets up redis using Shadowroller's config
 func SetupWithConfig() {
 	if config.RedisDebug {
 		logger = log.New(os.Stdout, "", log.Ltime|log.Lshortfile)

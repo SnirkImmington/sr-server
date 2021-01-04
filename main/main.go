@@ -8,6 +8,7 @@ import (
 	"os"
 	"sr"
 	"sr/config"
+	redisUtil "sr/redis"
 	"sr/routes"
 	"time"
 )
@@ -62,12 +63,12 @@ func main() {
 	} else {
 		log.SetFlags(log.Ltime | log.Lshortfile)
 	}
+	config.VerifyConfig()
 
 	log.Print("Starting up...")
 	rand.Seed(time.Now().UnixNano())
 	sr.BeginGeneratingRolls()
-	sr.SetupRedis()
-	config.VerifyConfig()
+	redisUtil.SetupWithConfig()
 	routes.RegisterTasksViaConfig()
 
 	log.Print("Shadowroller:", SHADOWROLLER, "\n")
