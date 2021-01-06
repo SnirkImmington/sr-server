@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"math/rand"
@@ -10,6 +11,8 @@ import (
 	"sr/config"
 	redisUtil "sr/redis"
 	"sr/routes"
+	"sr/setup"
+	"sr/task"
 	"time"
 )
 
@@ -20,6 +23,8 @@ const SHADOWROLLER = `
  _\ \ / _ \/ _ '// _  // _ \| |/|/ // __// _ \ / // // -_)/ __/
 /___//_//_/\_._/ \___/ \___/|__.__//_/   \___//_//_/ \__//_/
 `
+
+var taskFlag = flag.String("task", "", "Select a task to run interactively")
 
 func runServer(name string, server http.Server, tls bool) {
 	log.Printf("Running %v server at %v...", name, server.Addr)
@@ -63,12 +68,17 @@ func main() {
 	} else {
 		log.SetFlags(log.Ltime | log.Lshortfile)
 	}
+	flag.Parse()
 	config.VerifyConfig()
+	if taskFlag != nil && *taskFlag != "" {
+		task.RunSelectedTask(*taskFlag, flag.Args())
+	}
 
 	log.Print("Starting up...")
+	redisUtil.SetupWithConfig()
 	rand.Seed(time.Now().UnixNano())
 	sr.BeginGeneratingRolls()
-	redisUtil.SetupWithConfig()
+	setup.CheckGamesAndPlayers()
 	routes.RegisterTasksViaConfig()
 
 	log.Print("Shadowroller:", SHADOWROLLER, "\n")

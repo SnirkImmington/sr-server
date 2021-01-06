@@ -54,8 +54,8 @@ func (p *Player) RedisKey() string {
 	return "player:" + string(p.ID)
 }
 
-// MakePlayer constructs a new Player object, giving it a UID
-func MakePlayer(username string, name string) Player {
+// Make constructs a new Player object, giving it a UID
+func Make(username string, name string) Player {
 	return Player{
 		ID:       id.GenUID(),
 		Username: username,
@@ -64,6 +64,8 @@ func MakePlayer(username string, name string) Player {
 	}
 }
 
+// ErrNilPlayer is returned when an empty string or invalid ID is passed
+// to get methods.
 var ErrNilPlayer = errors.New("nil PlayerID requested")
 
 // Exists determines if a player with the given ID exists in the database

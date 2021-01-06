@@ -21,6 +21,7 @@ func addHardcodedGames(conn redis.Conn) error {
 	}
 	log.Printf("Games (%v): %v", len(gameKeys), gameKeys)
 	if !config.IsProduction && len(gameKeys) < len(config.HardcodedGameNames) {
+		log.Printf("Creating games %v", config.HardcodedGameNames)
 		for i, game := range config.HardcodedGameNames {
 			if _, err := conn.Do("hmset", "game:"+game, "event_id", 0); err != nil {
 				return fmt.Errorf("Unable to add game #%v, %v: %w", i+1, game, err)
@@ -60,13 +61,13 @@ func addHardcodedPlayers(conn redis.Conn) error {
 		log.Printf("Adding %v to all games", config.HardcodedUsernames)
 		games := config.HardcodedGameNames
 		for _, username := range config.HardcodedUsernames {
-			player := NewPlayer(username, strings.Title(username))
-			err := CreatePlayer(&player, conn)
+			plr := player.Make(username, strings.Title(username))
+			err := player.Create(&plr, conn)
 			if err != nil {
 				return fmt.Errorf("creating %v: %w", username, err)
 			}
 			for _, gameID := range games {
-				err := AddPlayerToGame(&player, gameID, conn)
+				err := game.AddPlayer(gameID, &plr, conn)
 				if err != nil {
 					return fmt.Errorf("adding %v to %v: %w", username, gameID)
 				}
@@ -76,11 +77,11 @@ func addHardcodedPlayers(conn redis.Conn) error {
 	return nil
 }
 
-// AddGamesAndPlayers adds the game names from the config to Redis
-// and sets up Redis logging if enabled.
-func AddGamesAndPlayers() {
-	conn := RedisPool.Get()
-	defer CloseRedis(conn)
+// CheckGamesAndPlayers adds the game names from the config to Redis
+// if missing, and prints existing games and players.
+func CheckGamesAndPlayers() {
+	conn := redisUtil.Connect()
+	defer redisUtil.Close(conn)
 
 	if err := addHardcodedGames(conn); err != nil {
 		panic(fmt.Errorf("Error adding hardcoded games: %w", err))
