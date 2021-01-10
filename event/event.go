@@ -2,12 +2,19 @@ package event
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"github.com/gomodule/redigo/redis"
 	redisUtil "sr/redis"
 	"strconv"
 	"strings"
 )
+
+// ValidID returns whether the non-empty-string id is valid.
+func ValidID(id string) bool {
+	_, err := strconv.ParseUint(id, 10, 64)
+	return err == nil
+}
 
 // GetByID retrieves a single event from Redis via its ID.
 func GetByID(gameID string, eventID int64, conn redis.Conn) (string, error) {
@@ -51,10 +58,40 @@ func GetBetween(gameID string, newest string, oldest string, count int, conn red
 	return events, nil
 }
 
-// ValidID returns whether the non-empty-string id is valid.
-func ValidID(id string) bool {
-	_, err := strconv.ParseUint(id, 10, 64)
-	return err == nil
+// BulkUpdate updates all of the given events at once
+func BulkUpdate(gameID string, events []Event, conn redis.Conn) error {
+	if err := conn.Send("MULTI"); err != nil {
+		return fmt.Errorf("sending `MULTI`: %w", err)
+	}
+	for ix, evt := range events {
+		eventID := evt.GetID()
+		eventBytes, err := json.Marshal(evt)
+		if err != nil {
+			return fmt.Errorf("marshaling event %v (%v %v) to JSON: %w",
+				ix, evt.GetType(), evt.GetID(), err,
+			)
+		}
+
+		err = conn.Send("ZREMRANGEBYSCORE", "history:"+gameID, eventID, eventID)
+		if err != nil {
+			return fmt.Errorf("sending `ZREMRANGEBYSCORE` #%v: %w", ix, err)
+		}
+		err = conn.Send("ZADD", "history:"+gameID, "NX", eventID, eventBytes)
+		if err != nil {
+			return fmt.Errorf("sending `ZADD` #%v: %w", ix, err)
+		}
+	}
+	// [#deleted = 1, #added = 1, ... * len(events)]
+	results, err := redis.Ints(conn.Do("EXEC"))
+	if err != nil {
+		return fmt.Errorf("sending `EXEC` and getting Ints: %w", err)
+	}
+	if len(results) != len(events)*2 {
+		return fmt.Errorf("Unexpected # of results: expected %v got %v",
+			len(events)*2, len(results),
+		)
+	}
+	return nil
 }
 
 // SubscribeToGame starts a goroutine that reads from the given game's history
