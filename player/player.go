@@ -64,6 +64,15 @@ func Make(username string, name string) Player {
 	}
 }
 
+// MapByID maps an array of players to a map
+func MapByID(players []Player) map[id.UID]Player {
+	result := make(map[id.UID]Player, len(players))
+	for _, plr := range players {
+		result[plr.ID] = plr
+	}
+	return result
+}
+
 // ErrNilPlayer is returned when an empty string or invalid ID is passed
 // to get methods.
 var ErrNilPlayer = errors.New("nil PlayerID requested")
