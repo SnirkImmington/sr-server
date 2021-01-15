@@ -11,6 +11,7 @@ import (
 	"sr/player"
 	redisUtil "sr/redis"
 	"sr/session"
+	"time"
 )
 
 // RegisterTasksViaConfig adds the /task route if it's enabled.
@@ -26,6 +27,77 @@ func RegisterTasksViaConfig() {
 }
 
 var tasksRouter = apiRouter().PathPrefix("/task").Subrouter()
+
+var _ = tasksRouter.HandleFunc("/clear-all-sessions", handleClearSessions).Methods("GET")
+
+func handleClearSessions(response Response, request *Request) {
+	logRequest(request)
+	conn := redisUtil.Connect()
+	defer closeRedis(request, conn)
+
+	keyNames, err := redis.Strings(conn.Do("keys", "session:*"))
+	httpInternalErrorIf(response, request, err)
+
+	httpInternalErrorIf(response, request,
+		conn.Send("MULTI"),
+	)
+	for _, keyName := range keyNames {
+		httpInternalErrorIf(response, request,
+			conn.Send("DEL", keyName),
+		)
+	}
+	results, err := redis.Ints(conn.Do("EXEC"))
+	httpInternalErrorIf(response, request, err)
+	if len(results) != len(keyNames) {
+		logf(request, "Expected %v results, got %v", len(keyNames), results)
+		httpInternalError(response, request, "Invalid response from redis")
+	}
+	httpSuccess(response, request,
+		"Deleted ", len(results), " sessions",
+	)
+}
+
+var _ = tasksRouter.HandleFunc("/timeout-all-sessions", handleTimeoutAllSessions).Methods("GET")
+
+func handleTimeoutAllSessions(response Response, request *Request) {
+	logRequest(request)
+
+	durString := request.FormValue("dur")
+	if durString == "" {
+		httpBadRequest(response, request, "Must specify dur")
+	}
+
+	dur, err := time.ParseDuration(durString)
+	if err != nil {
+		msg := fmt.Sprintf("Error parsing duration: %v", err)
+		httpBadRequest(response, request, msg)
+	}
+	durSecs := int64(dur.Seconds())
+
+	conn := redisUtil.Connect()
+	defer closeRedis(request, conn)
+
+	keyNames, err := redis.Strings(conn.Do("keys", "session:*"))
+	httpInternalErrorIf(response, request, err)
+
+	httpInternalErrorIf(response, request,
+		conn.Send("MULTI"),
+	)
+	for _, keyName := range keyNames {
+		httpInternalErrorIf(response, request,
+			conn.Send("EXPIRE", keyName, durSecs),
+		)
+	}
+	results, err := redis.Ints(conn.Do("EXEC"))
+	httpInternalErrorIf(response, request, err)
+	if len(results) != len(keyNames) {
+		logf(request, "Expected %v results, got %v", len(keyNames), results)
+		httpInternalError(response, request, "Invalid response from redis")
+	}
+	httpSuccess(response, request,
+		"Deleted ", len(results), " sessions",
+	)
+}
 
 var _ = tasksRouter.HandleFunc("/create-game", handleCreateGame).Methods("GET")
 
@@ -155,30 +227,6 @@ func handleAddToGame(response Response, request *Request) {
 	httpSuccess(response, request,
 		"Added ", plr, " to ", gameID,
 	)
-}
-
-var _ = tasksRouter.HandleFunc("/migrate-to-players", handleMigrateToPlayers).Methods("GET")
-
-func handleMigrateToPlayers(response Response, request *Request) {
-	logRequest(request)
-
-	gameID := request.FormValue("gameID")
-	if gameID == "" {
-		httpBadRequest(response, request, "Invalid game ID")
-	}
-
-	conn := redisUtil.Connect()
-	defer closeRedis(request, conn)
-
-	/*
-		playerMap := make(map[sr.UID]sr.UID)
-		eventCount := 0
-		batch := 1
-
-		for {
-
-		}
-	*/
 }
 
 var _ = tasksRouter.HandleFunc("/trim-players", handleTrimPlayers).Methods("GET")
