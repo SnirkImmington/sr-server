@@ -34,5 +34,7 @@ func RunSelectedTask(task string, args []string) {
 			os.Exit(1)
 		}
 
+		log.Printf("Task finished successfully.")
+		os.Exit(0)
 	}
 }

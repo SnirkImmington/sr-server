@@ -1,14 +1,15 @@
 package task
 
 import (
+	"bufio"
 	"fmt"
 	"log"
+	"os"
 	"reflect"
 	"sr/event"
 	"sr/game"
 	"sr/id"
 	"sr/player"
-	"strings"
 
 	"github.com/gomodule/redigo/redis"
 )
@@ -16,14 +17,15 @@ import (
 func handleGameMigrationTask(gameID string, conn redis.Conn) error {
 	players := make(map[id.UID]id.UID)
 	playersByUsername := make(map[string]id.UID)
+	scanner := bufio.NewScanner(os.Stdin)
 	selectAPlayer := func() (id.UID, string) {
 		for {
 			log.Printf("Select a username:")
-			var nameParts []string
-			if _, err := fmt.Scanln(nameParts); err != nil {
-				panic(fmt.Sprintf("Error scanning from stdin: %v", err))
+			if !scanner.Scan() {
+				panic(fmt.Errorf("Unable to read a line from stdin: %w", scanner.Err()))
 			}
-			playerName := strings.Join(nameParts, " ")
+			playerName := scanner.Text()
+
 			if playerName == "" {
 				log.Printf("Empty player name detected.")
 				continue

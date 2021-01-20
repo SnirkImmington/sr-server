@@ -21,6 +21,10 @@ func streamReadEvents(gameID string, callback func([]event.Event, int) error, co
 				bufferSize, newestID, err,
 			)
 		}
+		if len(events) == 1 {
+			log.Printf("> Found all the events!")
+			return nil
+		}
 		log.Printf("> %v found %v / %v events", count, len(events), bufferSize)
 		foundEvents := make([]event.Event, len(events))
 		for i, eventText := range events {
@@ -37,6 +41,7 @@ func streamReadEvents(gameID string, callback func([]event.Event, int) error, co
 			return fmt.Errorf("from callback on round %v: %w", count, err)
 		}
 		count++
+		newestID = fmt.Sprintf("%v", foundEvents[len(foundEvents)-1].GetID())
 	}
 	return nil
 }
