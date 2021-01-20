@@ -2,7 +2,6 @@ package task
 
 import (
 	"fmt"
-	"github.com/gomodule/redigo/redis"
 	"log"
 	"reflect"
 	"sr/event"
@@ -10,6 +9,8 @@ import (
 	"sr/id"
 	"sr/player"
 	"strings"
+
+	"github.com/gomodule/redigo/redis"
 )
 
 func handleGameMigrationTask(gameID string, conn redis.Conn) error {
@@ -41,6 +42,7 @@ func handleGameMigrationTask(gameID string, conn redis.Conn) error {
 	log.Printf("Game %v:", gameID)
 	for _, plr := range gamePlayers {
 		log.Printf("+ %v -> %v", plr.Username, plr.ID)
+		playersByUsername[plr.Username] = plr.ID
 	}
 
 	// Operate on events in batches
