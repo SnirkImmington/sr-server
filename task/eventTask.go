@@ -8,7 +8,7 @@ import (
 	"sr/id"
 )
 
-const bufferSize = 1000
+const bufferSize = 200
 
 func streamReadEvents(gameID string, callback func([]event.Event, int) error, conn redis.Conn) error {
 	count := 1
