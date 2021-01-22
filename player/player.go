@@ -1,12 +1,14 @@
 package player
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/gomodule/redigo/redis"
 	"math/rand"
 	"sr/id"
 	"strings"
+
+	"github.com/gomodule/redigo/redis"
 )
 
 // ErrNotFound means a player was not found.
@@ -17,18 +19,21 @@ var ErrNotFound = errors.New("player not found")
 // Players may be registered for a number of games.
 // Within those games, they may have a number of chars.
 type Player struct {
-	ID       id.UID `json:"id" redis:"-"`
-	Username string `json:"username" redis:"uname"`
-	Name     string `json:"name" redis:"name"`
-	Hue      int    `json:"hue" redis:"hue"`
+	ID   id.UID `redis:"-"`
+	Name string `redis:"name"`
+	Hue  int    `redis:"hue"`
+
+	Username    string `redis:"uname"`
+	Connections int    `redis:"connections"`
 }
 
 // Info is data other players can see about a player.
 // - `username` is not shown.
 type Info struct {
-	ID   id.UID `json:"id" redis:"-"`
-	Name string `json:"name" redis:"uname"`
-	Hue  int    `json:"hue" redis:"name"`
+	ID     id.UID `json:"id"`
+	Name   string `json:"name"`
+	Hue    int    `json:"hue"`
+	Online bool   `json:"online"`
 }
 
 func (p *Player) String() string {
@@ -37,12 +42,24 @@ func (p *Player) String() string {
 	)
 }
 
+// MarshalJSON writes a player to JSON. It secifies `online` instead of connections.
+func (p *Player) MarshalJSON() ([]byte, error) {
+	fields := make(map[string]interface{}, 5)
+	fields["id"] = p.ID
+	fields["name"] = p.Name
+	fields["hue"] = p.Hue
+	fields["username"] = p.Username
+	fields["online"] = p.Connections > 0
+	return json.Marshal(fields)
+}
+
 // Info returns game-readable information about the player
 func (p *Player) Info() Info {
 	return Info{
-		ID:   p.ID,
-		Name: p.Name,
-		Hue:  p.Hue,
+		ID:     p.ID,
+		Name:   p.Name,
+		Hue:    p.Hue,
+		Online: p.Connections > 0,
 	}
 }
 
@@ -57,10 +74,11 @@ func (p *Player) RedisKey() string {
 // Make constructs a new Player object, giving it a UID
 func Make(username string, name string) Player {
 	return Player{
-		ID:       id.GenUID(),
-		Username: username,
-		Name:     name,
-		Hue:      RandomHue(),
+		ID:          id.GenUID(),
+		Username:    username,
+		Name:        name,
+		Hue:         RandomHue(),
+		Connections: 0,
 	}
 }
 
@@ -262,4 +280,13 @@ func Create(player *Player, conn redis.Conn) error {
 		return fmt.Errorf("redis error with multi: expected [1, >1], got %v", data)
 	}
 	return nil
+}
+
+const IncreaseConnections = 1
+const DecreaseConnections = 2
+
+func ModifyConnections(playerID id.UID, amount int, conn redis.Conn) (int, error) {
+	return redis.Int(conn.Do(
+		"HINCRBY", "player:"+playerID, "connections", amount,
+	))
 }
