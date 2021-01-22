@@ -11,6 +11,7 @@ import (
 	"sr/event"
 	"sr/game"
 	"sr/id"
+	"sr/player"
 	"sr/update"
 	"strings"
 	"time"
@@ -362,7 +363,6 @@ func handleSubscription(response Response, request *Request) {
 	sess, conn, err := requestParamSession(request)
 	httpUnauthorizedIf(response, request, err)
 	defer closeRedis(request, conn)
-
 	logf(request, "Player %v to connect to %v", sess.PlayerID, sess.GameID)
 
 	// Upgrade to SSE stream
@@ -382,13 +382,19 @@ func handleSubscription(response Response, request *Request) {
 		// No error connecting
 	}
 
-	// Reset session timer, also reset on close
-	_, err = sess.Expire(conn)
-	httpInternalErrorIf(response, request, err)
-	logf(request, "Reset timer for session %v", sess.String())
+	// Unexpire temporary sessions so they last indefinitely
+	// (Unexpire persistant ones too in case you're on the cusp of the timeout)
+	if _, err = sess.Unexpire(conn); err != nil {
+		logf(request, "Unable to expire session %v: %v", sess.String(), err)
+		cancel()
+		return
+	} else {
+		logf(request, "Reset timer for session %v", sess.String())
+	}
+	// Always reset the temp/persist duration of the session after disconnect
 	defer func() {
 		if _, err := sess.Expire(conn); err != nil {
-			logf(request, "** Error resetting session timer for %v: %v", sess.String, err)
+			logf(request, "** Error resetting session timer for %v: %v", sess.String(), err)
 		} else {
 			logf(request, "** Reset session timer for %v", sess.String())
 		}
@@ -401,21 +407,42 @@ func handleSubscription(response Response, request *Request) {
 	err = pingStream()
 	if err != nil {
 		logf(request, "Unable to write initial ping: %v", err)
+		cancel()
 		return
 	}
 	lastPing := time.Now()
+
+	// Update player online status
+	if _, err := game.UpdatePlayerConnections(
+		sess.GameID, sess.PlayerID, player.IncreaseConnections, conn,
+	); err != nil {
+		logf(request, "Unable to incr player connection: %v", err)
+		cancel()
+		return
+	} else {
+		logf(request, "Updated player online status")
+	}
+	defer func() {
+		if _, err := game.UpdatePlayerConnections(
+			sess.GameID, sess.PlayerID, player.DecreaseConnections, conn,
+		); err != nil {
+			logf(request, "** Error decrementing player connections: %v", err)
+		} else {
+			logf(request, "** Decremented player connections")
+		}
+	}()
 
 	// Begin writing events
 	logf(request, "Begin receiving events...")
 	ssePingInterval := time.Duration(config.SSEPingSecs) * time.Second
 	for {
 		const pollInterval = time.Duration(2) * time.Second
-		const reexpireInterval = time.Duration(1) * time.Minute
 		now := time.Now()
 		if !stream.IsOpen() {
 			logf(request, "Connection closed by remote host")
 			break
 		}
+		// Ensure we ping every pingInterval
 		if now.Sub(lastPing) >= ssePingInterval {
 			err = pingStream()
 			if err != nil {
@@ -425,6 +452,7 @@ func handleSubscription(response Response, request *Request) {
 			lastPing = now
 		}
 		select {
+		// Receive a message from the subscription gooutine channel
 		case messageText := <-messages:
 			body := strings.SplitN(messageText, ":", 2)
 			if len(body) != 2 {
@@ -450,9 +478,11 @@ func handleSubscription(response Response, request *Request) {
 				break
 			}
 			logf(request, "=> Sent %v to %v", updateLog, sess.PlayerInfo())
+		// Receive an error from the goroutine channel
 		case err := <-errChan:
 			logf(request, "=> Error from subscription goroutine: %v", err)
 			break
+		// Rerun ping and !stream.Open() code
 		case <-time.After(pollInterval):
 			// Need to recheck stream.IsOpen()
 			continue
