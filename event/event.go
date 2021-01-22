@@ -109,11 +109,15 @@ func SubscribeToGame(ctx context.Context, gameID string) (<-chan string, <-chan 
 	sub := redis.PubSubConn{Conn: conn}
 	if err := sub.Subscribe("history:"+gameID, "update:"+gameID); err != nil {
 		errChan <- fmt.Errorf("unable to subscribe to update channels: %w", err)
+		redisUtil.Close(conn)
+		close(events)
+		close(errChan)
 		return events, errChan
 	}
 
 	go func() {
 		defer func() {
+			sub.Unsubscribe()
 			redisUtil.Close(conn)
 			close(events)
 			close(errChan)
@@ -127,7 +131,7 @@ func SubscribeToGame(ctx context.Context, gameID string) (<-chan string, <-chan 
 			}
 			switch msg := sub.Receive().(type) {
 			case error:
-				errChan <- fmt.Errorf("error from Redis Receive(): %w", msg)
+				errChan <- fmt.Errorf("error from redis Receive(): %w", msg)
 				return
 			case redis.Message:
 				message := string(msg.Data)
