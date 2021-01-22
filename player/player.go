@@ -282,8 +282,8 @@ func Create(player *Player, conn redis.Conn) error {
 	return nil
 }
 
-const IncreaseConnections = 1
-const DecreaseConnections = 2
+const IncreaseConnections = +1
+const DecreaseConnections = -1
 
 func ModifyConnections(playerID id.UID, amount int, conn redis.Conn) (int, error) {
 	return redis.Int(conn.Do(
