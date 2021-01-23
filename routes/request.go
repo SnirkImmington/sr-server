@@ -31,8 +31,7 @@ func closeRedis(request *Request, conn redis.Conn) {
 		rawLog(1, request, "nil connection passed to closeRedis")
 		return
 	}
-	err := conn.Close()
-	if err != nil {
+	if err := conn.Close(); err != nil {
 		rawLog(1, request, "Error closing redis connection: %v", err)
 	}
 }
