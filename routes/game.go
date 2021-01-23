@@ -25,8 +25,8 @@ var _ = gameRouter.HandleFunc("/info", handleInfo).Methods("GET")
 func handleInfo(response Response, request *Request) {
 	logRequest(request)
 	sess, conn, err := requestSession(request)
-	defer closeRedis(request, conn)
 	httpUnauthorizedIf(response, request, err)
+	defer closeRedis(request, conn)
 
 	info, err := game.GetInfo(sess.GameID, conn)
 	httpInternalErrorIf(response, request, err)
@@ -53,8 +53,8 @@ type updateEventRequest struct {
 func handleUpdateEvent(response Response, request *Request) {
 	logRequest(request)
 	sess, conn, err := requestSession(request)
-	defer closeRedis(request, conn)
 	httpUnauthorizedIf(response, request, err)
+	defer closeRedis(request, conn)
 
 	var updateRequest updateEventRequest
 	err = readBodyJSON(request, &updateRequest)
@@ -172,8 +172,8 @@ var _ = gameRouter.HandleFunc("/roll", handleRoll).Methods("POST")
 func handleRoll(response Response, request *Request) {
 	logRequest(request)
 	sess, conn, err := requestSession(request)
-	defer closeRedis(request, conn)
 	httpUnauthorizedIf(response, request, err)
+	defer closeRedis(request, conn)
 
 	var roll rollRequest
 	err = readBodyJSON(request, &roll)
