@@ -23,6 +23,9 @@ var (
 	// RedisDebug toggles logging every Redis command.
 	RedisDebug = readBool("REDIS_DEBUG", false)
 
+	// RedisConnectionsDebug toggles logging when redis connections are obtained and freed.
+	RedisConnectionsDebug = readBool("REDIS_CONNECTIONS", true)
+
 	// SlowResponsesDebug adds 5s to each response handler for debugging purposes.
 	// This value is ignored on production.
 	SlowResponsesDebug = readBool("SLOW_RESPONSES_DEBUG", false)

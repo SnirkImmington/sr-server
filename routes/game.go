@@ -26,7 +26,6 @@ func handleInfo(response Response, request *Request) {
 	logRequest(request)
 	sess, conn, err := requestSession(request)
 	httpUnauthorizedIf(response, request, err)
-	defer closeRedis(request, conn)
 
 	info, err := game.GetInfo(sess.GameID, conn)
 	httpInternalErrorIf(response, request, err)
@@ -54,7 +53,6 @@ func handleUpdateEvent(response Response, request *Request) {
 	logRequest(request)
 	sess, conn, err := requestSession(request)
 	httpUnauthorizedIf(response, request, err)
-	defer closeRedis(request, conn)
 
 	var updateRequest updateEventRequest
 	err = readBodyJSON(request, &updateRequest)
@@ -127,7 +125,6 @@ type deleteEventRequest struct {
 func handleDeleteEvent(response Response, request *Request) {
 	logRequest(request)
 	sess, conn, err := requestSession(request)
-	defer closeRedis(request, conn)
 	httpUnauthorizedIf(response, request, err)
 
 	var delete deleteEventRequest
@@ -173,7 +170,6 @@ func handleRoll(response Response, request *Request) {
 	logRequest(request)
 	sess, conn, err := requestSession(request)
 	httpUnauthorizedIf(response, request, err)
-	defer closeRedis(request, conn)
 
 	var roll rollRequest
 	err = readBodyJSON(request, &roll)
@@ -232,7 +228,6 @@ var _ = gameRouter.HandleFunc("/roll-initiative", handleRollInitiative).Methods(
 func handleRollInitiative(response Response, request *Request) {
 	logRequest(request)
 	sess, conn, err := requestSession(request)
-	defer closeRedis(request, conn)
 	httpUnauthorizedIf(response, request, err)
 
 	player, err := sess.GetPlayer(conn)
@@ -286,7 +281,6 @@ var _ = gameRouter.HandleFunc("/reroll", handleReroll).Methods("POST")
 func handleReroll(response Response, request *Request) {
 	logRequest(request)
 	sess, conn, err := requestSession(request)
-	defer closeRedis(request, conn)
 	httpUnauthorizedIf(response, request, err)
 
 	var reroll rerollRequest
@@ -362,7 +356,6 @@ func handleSubscription(response Response, request *Request) {
 	logRequest(request)
 	sess, conn, err := requestParamSession(request)
 	httpUnauthorizedIf(response, request, err)
-	defer closeRedis(request, conn)
 	logf(request, "Player %v to connect to %v", sess.PlayerID, sess.GameID)
 
 	// Upgrade to SSE stream
@@ -513,7 +506,6 @@ var _ = gameRouter.HandleFunc("/events", handleEvents).Methods("GET")
 func handleEvents(response Response, request *Request) {
 	logRequest(request)
 	sess, conn, err := requestSession(request)
-	defer closeRedis(request, conn)
 	httpUnauthorizedIf(response, request, err)
 
 	newest := request.FormValue("newest")

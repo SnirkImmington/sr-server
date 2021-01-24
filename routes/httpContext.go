@@ -41,7 +41,7 @@ func withRedisConn(ctx context.Context, conn redis.Conn) context.Context {
 	return context.WithValue(ctx, requestRedisConnKey, conn)
 }
 
-func redisConn(ctx context.Context) redis.Conn {
+func contextRedisConn(ctx context.Context) redis.Conn {
 	val := ctx.Value(requestRedisConnKey)
 	if val == nil {
 		return nil

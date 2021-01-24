@@ -27,6 +27,9 @@ var errExtraBody = errors.New("encountered additional data after end of JSON bod
 
 // closeRedis closes the redis connection and logs any errors found
 func closeRedis(request *Request, conn redis.Conn) {
+	if config.RedisConnectionsDebug {
+		rawLog(1, request, "Called closeRedis with conn %p", conn)
+	}
 	if conn == nil {
 		rawLog(1, request, "nil connection passed to closeRedis")
 		return

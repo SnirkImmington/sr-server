@@ -19,6 +19,9 @@ var pool = &redis.Pool{
 		if config.RedisDebug && err == nil {
 			return redis.NewLoggingConn(conn, logger, "redis"), nil
 		}
+		if config.RedisConnectionsDebug {
+			log.Printf("Dialing connection from pool: %p", conn)
+		}
 		return conn, err
 	},
 }
@@ -30,9 +33,16 @@ func Connect() redis.Conn {
 
 // Close closes a redis connection and logs errors if they occur
 func Close(conn redis.Conn) {
+	if config.RedisConnectionsDebug {
+		log.Printf("Called redisUtil.Close with %p", conn)
+	}
+	if conn == nil {
+		log.Printf("Attempted to close nil connection")
+		return
+	}
 	err := conn.Close()
 	if err != nil {
-		log.Printf("Error closing redis connection: %v", err)
+		log.Printf("Error closing redis connection %p: %v", conn, err)
 	}
 }
 

@@ -19,7 +19,6 @@ type playerUpdateRequest struct {
 func handleUpdatePlayer(response Response, request *Request) {
 	logRequest(request)
 	sess, conn, err := requestSession(request)
-	defer closeRedis(request, conn)
 	httpUnauthorizedIf(response, request, err)
 
 	var updateRequest playerUpdateRequest
