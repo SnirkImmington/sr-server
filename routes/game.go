@@ -349,7 +349,7 @@ func collectRolls(in interface{}) ([]int, error) {
 
 var removeDecimal = regexp.MustCompile(`\.\d+`)
 
-var _ = gameRouter.HandleFunc("/subscription", handleSubscription).Methods("GET")
+//var _ = gameRouter.HandleFunc("/subscription", handleSubscription).Methods("GET")
 
 // GET /subscription?session= Last-Event-ID: -> SSE :ping, event
 func handleSubscription(response Response, request *Request) {
