@@ -106,7 +106,8 @@ func displayRoute(route *mux.Route, handler *mux.Router, parents []*mux.Route) e
 
 func DisplaySiteRoutes() error {
 	err := restRouter.Walk(displayRoute)
-	fmt.Println(" [default] [*]\n")
+	fmt.Println(" [default] [*]")
+	fmt.Println()
 	return err
 }
 
