@@ -1,6 +1,7 @@
 package redis
 
 import (
+	"context"
 	"github.com/gomodule/redigo/redis"
 	"log"
 	"os"
@@ -24,11 +25,25 @@ var pool = &redis.Pool{
 		}
 		return conn, err
 	},
+	DialContext: func(ctx context.Context) (redis.Conn, error) {
+		conn, err := redis.DialURL(config.RedisURL)
+		if config.RedisDebug && err == nil {
+			return redis.NewLoggingConn(conn, logger, "redis"), nil
+		}
+		if config.RedisConnectionsDebug {
+			log.Printf("Dialing connection from pool: %p", conn)
+		}
+		return conn, err
+	},
 }
 
 // Connect opens a connection from the redis pool
 func Connect() redis.Conn {
 	return pool.Get()
+}
+
+func ConnectWithContext(ctx context.Context) (redis.Conn, error) {
+	return pool.GetContext(ctx)
 }
 
 // Close closes a redis connection and logs errors if they occur

@@ -26,6 +26,9 @@ var (
 	// RedisConnectionsDebug toggles logging when redis connections are obtained and freed.
 	RedisConnectionsDebug = readBool("REDIS_CONNECTIONS", true)
 
+	// StreamDebug toggles extra logging for the SSE stream tasks
+	StreamDebug = readBool("STREAM_DEBUG", false)
+
 	// SlowResponsesDebug adds 5s to each response handler for debugging purposes.
 	// This value is ignored on production.
 	SlowResponsesDebug = readBool("SLOW_RESPONSES_DEBUG", false)
