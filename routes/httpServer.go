@@ -121,8 +121,8 @@ var certManager = autocert.Manager{
 	Cache:      autocert.DirCache(config.TLSAutocertDir),
 }
 
-func baseTLSConfig() tls.Config {
-	return tls.Config{
+func baseTLSConfig() *tls.Config {
+	return &tls.Config{
 		PreferServerCipherSuites: true,
 		CurvePreferences: []tls.CurveID{
 			tls.CurveP256,
@@ -140,7 +140,7 @@ func baseTLSConfig() tls.Config {
 	}
 }
 
-func autocertTLSConfig() tls.Config {
+func autocertTLSConfig() *tls.Config {
 	conf := baseTLSConfig()
 	conf.GetCertificate = certManager.GetCertificate
 	return conf
@@ -150,7 +150,7 @@ func autocertTLSConfig() tls.Config {
 // Servers
 //
 
-func MakeHTTPRedirectServer() http.Server {
+func MakeHTTPRedirectServer() *http.Server {
 	router := redirectRouter()
 	server := makeServerFromRouter(router)
 	if config.TLSAutocertDir != "" {
@@ -160,7 +160,7 @@ func MakeHTTPRedirectServer() http.Server {
 	return server
 }
 
-func MakeHTTPSiteServer() http.Server {
+func MakeHTTPSiteServer() *http.Server {
 	c := makeCORSConfig()
 	restRouter.NewRoute().HandlerFunc(notFoundHandler)
 	router := c.Handler(restRouter)
@@ -169,8 +169,8 @@ func MakeHTTPSiteServer() http.Server {
 	return server
 }
 
-func MakeHTTPSSiteServer() http.Server {
-	var tlsConf tls.Config
+func MakeHTTPSSiteServer() *http.Server {
+	var tlsConf *tls.Config
 	if config.TLSAutocertDir != "" {
 		tlsConf = autocertTLSConfig()
 	} else {
@@ -181,13 +181,13 @@ func MakeHTTPSSiteServer() http.Server {
 	restRouter.Use(tlsHeadersMiddleware)
 	router := c.Handler(restRouter)
 	server := makeServerFromRouter(router)
-	server.TLSConfig = &tlsConf
+	server.TLSConfig = tlsConf
 	server.Addr = config.PublishHTTPS
 	return server
 }
 
-func makeServerFromRouter(router http.Handler) http.Server {
-	return http.Server{
+func makeServerFromRouter(router http.Handler) *http.Server {
+	return &http.Server{
 		ReadTimeout: time.Duration(config.ReadTimeoutSecs) * time.Second,
 		//WriteTimeout:   time.Duration(config.WriteTimeoutSecs) * time.Second,
 		IdleTimeout:    time.Duration(config.IdleTimeoutSecs) * time.Second,
