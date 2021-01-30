@@ -50,7 +50,7 @@ func requestParamSession(request *Request) (*session.Session, redis.Conn, error)
 	if err != nil {
 		return nil, nil, err
 	}
-	conn := redisUtil.Connect()
+	conn := contextRedisConn(request.Context())
 	session, err := session.GetByID(sessionID, conn)
 	if err != nil {
 		redisUtil.Close(conn)
