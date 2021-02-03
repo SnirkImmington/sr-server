@@ -49,7 +49,7 @@ func ConnectWithContext(ctx context.Context) (redis.Conn, error) {
 // Close closes a redis connection and logs errors if they occur
 func Close(conn redis.Conn) {
 	if config.RedisConnectionsDebug {
-		log.Printf("Called redisUtil.Close with %p", conn)
+		log.Printf("Called redisUtil.Close(): %p", conn)
 	}
 	if conn == nil {
 		log.Printf("Attempted to close nil connection")

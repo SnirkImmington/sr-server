@@ -79,9 +79,6 @@ func recoveryMiddleware(wrapped http.Handler) http.Handler {
 
 func rateLimitedMiddleware(wrapped http.Handler) http.Handler {
 	return http.HandlerFunc(func(response Response, request *Request) {
-		if config.RedisConnectionsDebug {
-			logf(request, "Requesting redis connection")
-		}
 		conn := redisUtil.Connect()
 		defer closeRedis(request, conn)
 
