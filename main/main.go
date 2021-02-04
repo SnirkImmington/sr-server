@@ -9,12 +9,12 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
-	"os/signal"
 	"sr"
 	"sr/config"
 	redisUtil "sr/redis"
 	"sr/routes"
 	"sr/setup"
+	"sr/shutdownHandler"
 	"sr/task"
 	"time"
 )
@@ -32,30 +32,23 @@ var taskFlag = flag.String("task", "", "Select a task to run interactively")
 func runServer(name string, server *http.Server, tls bool) {
 	log.Printf("Running %v server at %v...", name, server.Addr)
 
-	if false { // TODO the ctrl-C should either send to all server threads or just to API for cleanup.
+	go func() {
+		client := shutdownHandler.MakeClient(fmt.Sprintf("%v server", name))
+		defer client.Close()
+
+		// Wait for interrupt
+		<-client.Channel
+		ctx, cancel := context.WithCancel(context.Background())
+		// Timeout terminate server in 10s
 		go func() {
-			sigint := make(chan os.Signal, 1)
-			signal.Notify(sigint, os.Interrupt)
-			<-sigint
-
-			// Interrupt received
-			log.Print("Interrupt received, closing in 10s. Ctrl-C to force close")
-			ctx, cancel := context.WithCancel(context.Background())
-			go func() {
-				select {
-				case <-sigint:
-					log.Print("Aborting...")
-				case <-time.After(time.Duration(10) * time.Second):
-					log.Print("Timed out, aborting...")
-				}
-				cancel()
-				panic("Server closed")
-			}()
-
-			err := server.Shutdown(ctx)
-			log.Printf("Serve3r shutdown: %v", err)
+			time.Sleep(10 * time.Second)
+			cancel()
 		}()
-	}
+		err := server.Shutdown(ctx)
+		if err != nil {
+			log.Printf("%v server closed: %v", name, err)
+		}
+	}()
 
 	for {
 		var err error
@@ -80,7 +73,8 @@ func runServer(name string, server *http.Server, tls bool) {
 		}
 
 		if errors.Is(err, http.ErrServerClosed) {
-			log.Print("Server shutdown request received.")
+			log.Printf("%v server has shut down.", name)
+			return
 		}
 
 		if err != nil {
@@ -102,6 +96,7 @@ func main() {
 	}
 	flag.Parse()
 	config.VerifyConfig()
+	shutdownHandler.Init()
 	if taskFlag != nil && *taskFlag != "" {
 		task.RunSelectedTask(*taskFlag, flag.Args())
 	}
@@ -131,4 +126,6 @@ func main() {
 		siteServer := routes.MakeHTTPSSiteServer()
 		runServer("API", siteServer, true)
 	}
+	// Wait for all handlers to finish and return cleanly
+	shutdownHandler.WaitGroup.Wait()
 }
