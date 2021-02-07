@@ -3,13 +3,12 @@ package routes
 import (
 	"context"
 	"fmt"
-	"os"
-	"os/signal"
 	"sr/config"
 	"sr/event"
 	"sr/game"
 	"sr/id"
 	"sr/player"
+	"sr/shutdownHandler"
 	"time"
 
 	"github.com/janberktold/sse"
@@ -43,6 +42,10 @@ func handleSubscription2(response Response, request *Request) {
 	sess, conn, err := requestParamSession(request)
 	httpUnauthorizedIf(response, request, err)
 	logf(request, "Player %v to connect to %v", sess.PlayerID, sess.GameID)
+
+	// Get shutdown handler first so it defers after everything else
+	client := shutdownHandler.MakeClient(fmt.Sprintf("request %02x subscription", requestID(request.Context())))
+	defer client.Close()
 
 	// Upgrade to SSE stream
 	stream, err := sseUpgrader.Upgrade(response, request)
@@ -99,11 +102,6 @@ func handleSubscription2(response Response, request *Request) {
 		)
 	}()
 
-	// Allow long-running cleanup to happen on CTRL-C
-	sigint := make(chan os.Signal, 1)
-	signal.Notify(sigint, os.Interrupt)
-	defer signal.Stop(sigint)
-
 	// Begin receiving events
 	lastPing := time.Now() // We want to reping immediately
 	ssePingInterval := time.Duration(config.SSEPingSecs) * time.Second
@@ -135,8 +133,8 @@ func handleSubscription2(response Response, request *Request) {
 		case err := <-errors:
 			logf(request, "<= Error from subscription task: %v", err)
 			return
-		case <-sigint:
-			logf(request, "SIGINT received; closing")
+		case <-client.Channel:
+			logf(request, "Shutdown received; closing")
 			return
 		case <-time.After(pollInterval):
 			continue
