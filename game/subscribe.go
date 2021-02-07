@@ -2,12 +2,9 @@ package game
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log"
-	"net"
 	"strings"
-	"time"
 
 	"github.com/gomodule/redigo/redis"
 	redisUtil "sr/redis"
@@ -23,6 +20,14 @@ type Message struct {
 	Body string
 }
 
+// This task becomes a memory leak as we cannot signal for it to close effectively.
+// The goroutine will remain open after a client disconnects, until the next event
+// or update is sent in the game. The underlying connection may eventually be reclaimed by the redis pool.
+// This is due to a limitation in the redigo library - we cannot check for an
+// external close message while also listening on the connection without entering a reconnect loop.
+// Because this leak is not indefinite, and can only grow trivally large given current traffic,
+// and because I'd like to replace the library with one that can handle pipelining anyway,
+// I'm going to ignore it for now and switch libraries by next major release.
 func subscribeTask(cleanup func(), messages chan Message, errs chan error, sub redis.PubSubConn, ctx context.Context) {
 	defer cleanup()
 	for {
@@ -32,20 +37,11 @@ func subscribeTask(cleanup func(), messages chan Message, errs chan error, sub r
 			errs <- fmt.Errorf("received done from context: err = %w", ctx.Err())
 			return
 		default:
-			log.Print("No Done() this ping")
 		}
-		const pollInterval = time.Duration(4) * time.Second
 		// Receive an event or update from the game
-		switch msg := sub.ReceiveWithTimeout(pollInterval).(type) {
+		switch msg := sub.Receive().(type) {
 		case error:
 			log.Printf("Received error %#v", msg)
-			var netError net.Error
-			if errors.As(msg, &netError) {
-				if netError.Timeout() {
-					log.Print("Subscription helper loop")
-					continue
-				}
-			}
 			errs <- fmt.Errorf("from redis Receive(): %w", msg)
 			return
 		case redis.Message:
@@ -59,7 +55,6 @@ func subscribeTask(cleanup func(), messages chan Message, errs chan error, sub r
 			messages <- message
 		case redis.Subscription:
 			// okay; ignore
-			log.Printf("Helper: %#v", msg)
 		default:
 			errs <- fmt.Errorf("unexpected value for Receive(): %#v", msg)
 		}
