@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"math/rand"
 	"sr/id"
 	"strings"
@@ -14,6 +15,12 @@ import (
 // ErrNotFound means a player was not found.
 var ErrNotFound = errors.New("player not found")
 
+type OnlineMode = int
+
+var OnlineModeAuto OnlineMode = 0
+var OnlineModeOnline OnlineMode = 1
+var OnlineModeOffline OnlineMode = 2
+
 // Player is a user of Shadowroller.
 //
 // Players may be registered for a number of games.
@@ -23,8 +30,9 @@ type Player struct {
 	Name string `redis:"name"`
 	Hue  int    `redis:"hue"`
 
-	Username    string `redis:"uname"`
-	Connections int    `redis:"connections"`
+	Username    string     `redis:"uname"`
+	Connections int        `redis:"connections"`
+	OnlineMode  OnlineMode `redis:"onlineMode"`
 }
 
 // Info is data other players can see about a player.
@@ -59,7 +67,21 @@ func (p *Player) Info() Info {
 		ID:     p.ID,
 		Name:   p.Name,
 		Hue:    p.Hue,
-		Online: p.Connections > 0,
+		Online: p.IsOnline(),
+	}
+}
+
+func (p *Player) IsOnline() bool {
+	switch p.OnlineMode {
+	case OnlineModeAuto:
+		return p.Connections > 0
+	case OnlineModeOnline:
+		return true
+	case OnlineModeOffline:
+		return false
+	default:
+		log.Printf("Called IsOnline() on %#v", p)
+		return false
 	}
 }
 
@@ -79,6 +101,7 @@ func Make(username string, name string) Player {
 		Name:        name,
 		Hue:         RandomHue(),
 		Connections: 0,
+		OnlineMode:  OnlineModeAuto,
 	}
 }
 
