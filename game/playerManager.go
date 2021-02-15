@@ -78,9 +78,9 @@ func UpdatePlayerConnections(gameID string, playerID id.UID, mod int, conn redis
 
 // UpdatePlayer updates a player in the database.
 // It does not allow for username updates. It only publishes the update to the given game.
-func UpdatePlayer(gameID string, playerID id.UID, update update.Player, conn redis.Conn) error {
-	playerSet, playerData := update.MakeRedisCommand()
-	updateBytes, err := json.Marshal(update)
+func UpdatePlayer(gameID string, playerID id.UID, externalUpdate update.Player, internalUpdate update.Player, conn redis.Conn) error {
+	playerSet, playerData := internalUpdate.MakeRedisCommand()
+	updateBytes, err := json.Marshal(externalUpdate)
 	if err != nil {
 		return fmt.Errorf("unable to marshal update to JSON :%w", err)
 	}

@@ -32,7 +32,8 @@ func handleUpdatePlayer(response Response, request *Request) {
 		"%v requests update %v", sess.PlayerInfo(), updateRequest.Diff,
 	)
 
-	diff := make(map[string]interface{}, len(requestDiff))
+	externalDiff := make(map[string]interface{}, len(requestDiff))
+	internalDiff := make(map[string]interface{})
 	for key, value := range requestDiff {
 		switch key {
 		case "name":
@@ -44,14 +45,21 @@ func handleUpdatePlayer(response Response, request *Request) {
 			if !player.ValidName(name) {
 				httpBadRequest(response, request, "name: invalid")
 			}
-			diff["name"] = name
+			externalDiff["name"] = name
+			internalDiff["name"] = name
 		case "hue":
 			hue, ok := value.(float64)
 			if !ok || hue < 0 || hue > 360 {
 				httpBadRequest(response, request, "hue: expected int 0-360")
 			}
-			diff["hue"] = int(hue)
+			internalDiff["hue"] = int(hue)
+			externalDiff["hue"] = int(hue)
 		case "onlineMode":
+			// Determine if online mode changes player online status
+			plr, err := player.GetByID(string(sess.PlayerID), conn)
+			httpInternalErrorIf(response, request, err)
+			previouslyOnline := plr.IsOnline()
+
 			var mode player.OnlineMode
 			switch value {
 			case "auto":
@@ -63,19 +71,30 @@ func handleUpdatePlayer(response Response, request *Request) {
 			default:
 				httpBadRequest(response, request, "onlineMode: invalid mode received")
 			}
-			diff["onlineMode"] = mode
+			// Change the variable `plr` to see if the change affects IsOnline()
+			plr.OnlineMode = mode
+			updatedOnline := plr.IsOnline()
+
+			if previouslyOnline != updatedOnline {
+				externalDiff["online"] = updatedOnline
+				internalDiff["online"] = updatedOnline
+			}
+			internalDiff["onlineMode"] = mode
 		default:
 			httpBadRequest(response, request,
 				fmt.Sprintf("Cannot update field %v", key),
 			)
 		}
 	}
-	logf(request, "Created update %#v", diff)
-	update := update.ForPlayerDiff(sess.PlayerID, diff)
+	logf(request, "Created update %#v", externalDiff)
+	externalUpdate := update.ForPlayerDiff(sess.PlayerID, externalDiff)
+	internalUpdate := update.ForPlayerDiff(sess.PlayerID, internalDiff)
 
-	err = game.UpdatePlayer(sess.GameID, sess.PlayerID, update, conn)
+	err = game.UpdatePlayer(sess.GameID, sess.PlayerID, externalUpdate, internalUpdate, conn)
+	httpInternalErrorIf(response, request, err)
+	err = writeBodyJSON(response, internalDiff)
 	httpInternalErrorIf(response, request, err)
 	httpSuccess(response, request,
-		"Player ", sess.PlayerID, " update ", diff,
+		"Player ", sess.PlayerID, " update ", internalDiff,
 	)
 }
