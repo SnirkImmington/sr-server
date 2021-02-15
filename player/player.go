@@ -15,11 +15,25 @@ import (
 // ErrNotFound means a player was not found.
 var ErrNotFound = errors.New("player not found")
 
+// OnlineMode is a toggle for show as online/show as offline
 type OnlineMode = int
 
-var OnlineModeAuto OnlineMode = 0
-var OnlineModeOnline OnlineMode = 1
-var OnlineModeOffline OnlineMode = 2
+var OnlineModeAuto OnlineMode = 0    // Show as online if connected
+var OnlineModeOnline OnlineMode = 1  // Always show as onlilne
+var OnlineModeOffline OnlineMode = 2 // Always show as offline
+
+func OnlineModeString(mode OnlineMode) string {
+	switch mode {
+	case OnlineModeAuto:
+		return "auto"
+	case OnlineModeOnline:
+		return "alwaysOnline"
+	case OnlineModeOffline:
+		return "alwaysOffline"
+	default:
+		return "auto"
+	}
+}
 
 // Player is a user of Shadowroller.
 //
@@ -57,7 +71,8 @@ func (p *Player) MarshalJSON() ([]byte, error) {
 	fields["name"] = p.Name
 	fields["hue"] = p.Hue
 	fields["username"] = p.Username
-	fields["online"] = p.Connections > 0
+	fields["online"] = p.IsOnline()
+	fields["onlineMode"] = OnlineModeString(p.OnlineMode)
 	return json.Marshal(fields)
 }
 

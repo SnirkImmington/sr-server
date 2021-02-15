@@ -51,6 +51,19 @@ func handleUpdatePlayer(response Response, request *Request) {
 				httpBadRequest(response, request, "hue: expected int 0-360")
 			}
 			diff["hue"] = int(hue)
+		case "onlineMode":
+			var mode player.OnlineMode
+			switch value {
+			case "auto":
+				mode = player.OnlineModeAuto
+			case "alwaysOnline":
+				mode = player.OnlineModeOnline
+			case "alwaysOffline":
+				mode = player.OnlineModeOffline
+			default:
+				httpBadRequest(response, request, "onlineMode: invalid mode received")
+			}
+			diff["onlineMode"] = mode
 		default:
 			httpBadRequest(response, request,
 				fmt.Sprintf("Cannot update field %v", key),
