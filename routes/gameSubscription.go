@@ -61,7 +61,7 @@ func handleSubscription2(response Response, request *Request) {
 	ctx, cancel := context.WithCancel(request.Context())
 	messages := make(chan game.Message)
 	errors := make(chan error, 1)
-	err = game.Subscribe(sess.GameID, messages, errors, ctx)
+	err = game.Subscribe(ctx, sess.GameID, messages, errors)
 	httpInternalErrorIf(response, request, err)
 	logf(request, "Subscription task for %v established", sess.GameID)
 	defer cancel()

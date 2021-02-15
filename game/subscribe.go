@@ -10,11 +10,16 @@ import (
 	redisUtil "sr/redis"
 )
 
+// MessageType is the type of a message sent through a subscription
 type MessageType int
 
+// MessageTypeEvent is sent for a new event
 const MessageTypeEvent MessageType = MessageType(1)
+
+// MessageTypeUpdate is sent for an update
 const MessageTypeUpdate MessageType = MessageType(2)
 
+// Message is either an event or update
 type Message struct {
 	Type MessageType
 	Body string
@@ -28,8 +33,10 @@ type Message struct {
 // Because this leak is not indefinite, and can only grow trivally large given current traffic,
 // and because I'd like to replace the library with one that can handle pipelining anyway,
 // I'm going to ignore it for now and switch libraries by next major release.
-func subscribeTask(cleanup func(), messages chan Message, errs chan error, sub redis.PubSubConn, ctx context.Context) {
+func subscribeTask(ctx context.Context, cleanup func(), messages chan Message, errs chan error, sub redis.PubSubConn) {
 	defer cleanup()
+	sub.Receive()
+	sub.Receive() // skip the subscription messages
 	for {
 		// Check if we have received done yet
 		select {
@@ -61,7 +68,10 @@ func subscribeTask(cleanup func(), messages chan Message, errs chan error, sub r
 	}
 }
 
-func Subscribe(gameID string, messages chan Message, errors chan error, ctx context.Context) error {
+// Subscribe runs a task in a separate goroutine that will send new `Message`s to the `messages` channel
+// and errors to the error channel. Both channels will be closed upon completion.
+// ctx is used to cancel the remote task and must also have been initialized with a redis connection.
+func Subscribe(ctx context.Context, gameID string, messages chan Message, errors chan error) error {
 	conn, err := redisUtil.ConnectWithContext(ctx)
 	if err != nil {
 		close(errors)
@@ -72,7 +82,9 @@ func Subscribe(gameID string, messages chan Message, errors chan error, ctx cont
 
 	cleanup := func() {
 		log.Print("Cleaning up subscribe task")
-		sub.Unsubscribe()
+		if err := sub.Unsubscribe(); err != nil {
+			log.Printf("Error unsubscribing: %v", err)
+		}
 		redisUtil.Close(conn)
 		close(errors)
 		close(messages)
@@ -82,6 +94,6 @@ func Subscribe(gameID string, messages chan Message, errors chan error, ctx cont
 		cleanup()
 		return fmt.Errorf("subscribing to events and history: %w", err)
 	}
-	go subscribeTask(cleanup, messages, errors, sub, ctx)
+	go subscribeTask(ctx, cleanup, messages, errors, sub)
 	return nil
 }
