@@ -79,22 +79,28 @@ func UpdatePlayerConnections(gameID string, playerID id.UID, mod int, conn redis
 // UpdatePlayer updates a player in the database.
 // It does not allow for username updates. It only publishes the update to the given game.
 func UpdatePlayer(gameID string, playerID id.UID, externalUpdate update.Player, internalUpdate update.Player, conn redis.Conn) error {
-	playerSet, playerData := internalUpdate.MakeRedisCommand()
-	updateBytes, err := json.Marshal(externalUpdate)
-	if err != nil {
-		return fmt.Errorf("unable to marshal update to JSON :%w", err)
+	if internalUpdate.IsEmpty() && externalUpdate.IsEmpty() {
+		return fmt.Errorf("external update %v empty and internal update %v empty", externalUpdate, internalUpdate)
 	}
-
 	// MULTI: update player, publish update
 	if err := conn.Send("MULTI"); err != nil {
 		return fmt.Errorf("redis error sending MULTI for player update: %w", err)
 	}
-	// Apply update to player
-	if err = conn.Send(playerSet, playerData...); err != nil {
-		return fmt.Errorf("redis error sending HSET for player update: %w", err)
+	if !internalUpdate.IsEmpty() {
+		playerSet, playerData := internalUpdate.MakeRedisCommand()
+		// Apply update to player
+		if err := conn.Send(playerSet, playerData...); err != nil {
+			return fmt.Errorf("redis error sending HSET for player update: %w", err)
+		}
 	}
-	if err = conn.Send("PUBLISH", "update:"+gameID, updateBytes); err != nil {
-		return fmt.Errorf("redis error sending event publish: %w", err)
+	if !externalUpdate.IsEmpty() {
+		updateBytes, err := json.Marshal(externalUpdate)
+		if err != nil {
+			return fmt.Errorf("unable to marshal update to JSON :%w", err)
+		}
+		if err = conn.Send("PUBLISH", "update:"+gameID, updateBytes); err != nil {
+			return fmt.Errorf("redis error sending event publish: %w", err)
+		}
 	}
 	// EXEC: [#new=0, #players]
 	results, err := redis.Ints(conn.Do("EXEC"))

@@ -55,29 +55,24 @@ func handleUpdatePlayer(response Response, request *Request) {
 			internalDiff["hue"] = int(hue)
 			externalDiff["hue"] = int(hue)
 		case "onlineMode":
+			var mode player.OnlineMode
+			modeFloat, ok := value.(float64)
+			modeInt := int(modeFloat)
+			if !ok || modeInt < player.OnlineModeAuto || modeInt > player.OnlineModeOffline {
+				httpBadRequest(response, request, "mode: expected auto, online, offline")
+			}
+			mode = modeInt
+
 			// Determine if online mode changes player online status
 			plr, err := player.GetByID(string(sess.PlayerID), conn)
 			httpInternalErrorIf(response, request, err)
 			previouslyOnline := plr.IsOnline()
-
-			var mode player.OnlineMode
-			switch value {
-			case "auto":
-				mode = player.OnlineModeAuto
-			case "alwaysOnline":
-				mode = player.OnlineModeOnline
-			case "alwaysOffline":
-				mode = player.OnlineModeOffline
-			default:
-				httpBadRequest(response, request, "onlineMode: invalid mode received")
-			}
 			// Change the variable `plr` to see if the change affects IsOnline()
 			plr.OnlineMode = mode
 			updatedOnline := plr.IsOnline()
 
 			if previouslyOnline != updatedOnline {
 				externalDiff["online"] = updatedOnline
-				internalDiff["online"] = updatedOnline
 			}
 			internalDiff["onlineMode"] = mode
 		default:
@@ -86,9 +81,12 @@ func handleUpdatePlayer(response Response, request *Request) {
 			)
 		}
 	}
-	logf(request, "Created update %#v", externalDiff)
+	logf(request, "Created updates %#v and %#v", externalDiff, internalDiff)
 	externalUpdate := update.ForPlayerDiff(sess.PlayerID, externalDiff)
 	internalUpdate := update.ForPlayerDiff(sess.PlayerID, internalDiff)
+	if externalUpdate.IsEmpty() && internalUpdate.IsEmpty() {
+		httpBadRequest(response, request, "No update made?")
+	}
 
 	err = game.UpdatePlayer(sess.GameID, sess.PlayerID, externalUpdate, internalUpdate, conn)
 	httpInternalErrorIf(response, request, err)

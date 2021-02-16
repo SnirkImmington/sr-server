@@ -13,6 +13,7 @@ type Player interface {
 
 	PlayerID() id.UID
 	MakeRedisCommand() (string, redis.Args)
+	IsEmpty() bool
 }
 
 type PlayerOnline struct {
@@ -30,6 +31,10 @@ func (update *PlayerOnline) Type() string {
 
 func (update *PlayerOnline) PlayerID() id.UID {
 	return update.id
+}
+
+func (update *PlayerOnline) IsEmpty() bool {
+	return false
 }
 
 func (update *PlayerOnline) MarshalJSON() ([]byte, error) {
@@ -61,6 +66,10 @@ func (update *playerDiff) PlayerID() id.UID {
 	return update.id
 }
 
+func (update *playerDiff) IsEmpty() bool {
+	return len(update.diff) == 0
+}
+
 func (update *playerDiff) MarshalJSON() ([]byte, error) {
 	fields := []interface{}{
 		UpdateTypePlayer, update.id, update.diff,
@@ -86,6 +95,10 @@ func (update *playerAdd) Type() string {
 
 func (update *playerAdd) PlayerID() id.UID {
 	return update.player.ID
+}
+
+func (update *playerAdd) IsEmpty() bool {
+	return false
 }
 
 func (update *playerAdd) MarshalJSON() ([]byte, error) {
