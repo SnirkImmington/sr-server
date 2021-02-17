@@ -18,9 +18,14 @@ var ErrNotFound = errors.New("player not found")
 // OnlineMode is a toggle for show as online/show as offline
 type OnlineMode = int
 
-var OnlineModeAuto OnlineMode        // Show as online if connected
-var OnlineModeOnline OnlineMode = 1  // Always show as onlilne
-var OnlineModeOffline OnlineMode = 2 // Always show as offline
+// OnlineModeAuto indicates a player will be shown as online when connected to a game
+var OnlineModeAuto OnlineMode
+
+// OnlineModeOnline indicates a player will always be shown as online
+var OnlineModeOnline OnlineMode = 1
+
+// OnlineModeOffline indicates a player will always be shown as offline
+var OnlineModeOffline OnlineMode = 2
 
 // Player is a user of Shadowroller.
 //
@@ -308,9 +313,13 @@ func Create(player *Player, conn redis.Conn) error {
 	return nil
 }
 
+// IncreaseConnections is used when a new connection is established
 const IncreaseConnections = +1
+
+// DecreaseConnections is used when a connection is closed
 const DecreaseConnections = -1
 
+// ModifyConnections modifies the Connections attribute of a player; used by the subscription handler
 func ModifyConnections(playerID id.UID, amount int, conn redis.Conn) (int, error) {
 	return redis.Int(conn.Do(
 		"HINCRBY", "player:"+playerID, "connections", amount,
