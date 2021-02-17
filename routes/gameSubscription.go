@@ -3,6 +3,7 @@ package routes
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"sr/config"
 	"sr/event"
 	"sr/game"
@@ -35,9 +36,11 @@ func writeMessageToStream(message *game.Message, stream *sse.Conn) (string, erro
 	return updateLog, stream.WriteEventWithID(messageID, streamChannel, []byte(message.Body))
 }
 
-var _ = gameRouter.HandleFunc("/subscription", handleSubscription2)
+var removeDecimal = regexp.MustCompile(`\.\d+`)
 
-func handleSubscription2(response Response, request *Request) {
+var _ = gameRouter.HandleFunc("/subscription", handleSubscription)
+
+func handleSubscription(response Response, request *Request) {
 	logRequest(request)
 	sess, conn, err := requestParamSession(request)
 	httpUnauthorizedIf(response, request, err)
