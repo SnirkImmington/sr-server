@@ -106,7 +106,7 @@ func handleSubscription(response Response, request *Request) {
 	}()
 
 	// Begin receiving events
-	lastPing := time.Now() // We want to reping immediately
+	lastPing := time.Now()
 	ssePingInterval := time.Duration(config.SSEPingSecs) * time.Second
 	const pollInterval = time.Duration(2) * time.Second
 	logf(request, "Begin receiving events...")
