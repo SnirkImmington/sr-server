@@ -102,16 +102,10 @@ func UpdatePlayer(gameID string, playerID id.UID, externalUpdate update.Player, 
 			return fmt.Errorf("redis error sending event publish: %w", err)
 		}
 	}
-	// EXEC: [#new=0, #players]
-	results, err := redis.Ints(conn.Do("EXEC"))
+	// EXEC: [0] for just internal, [#players] for just external, [#new=0, #players] for both
+	_, err := redis.Ints(conn.Do("EXEC"))
 	if err != nil {
 		return fmt.Errorf("redis error sending EXEC: %w", err)
-	}
-	if len(results) != 2 {
-		return fmt.Errorf("redis error updating player, expected 2 results got %v", results)
-	}
-	if results[0] != 0 {
-		return fmt.Errorf("redis error updating player, expected [0, *] got %v", results)
 	}
 	return nil
 }
