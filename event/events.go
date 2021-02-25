@@ -6,13 +6,42 @@ import (
 	"regexp"
 	"sr/id"
 	"sr/player"
+	"strconv"
 )
+
+// Share is the sharing option for events
+type Share int
+
+// ShareInGame means an event is shared with the whole game
+const ShareInGame = Share(0)
+
+// SharePrivate means an event is only known by its sender
+const SharePrivate = Share(1)
+
+// ShareType displays the type of share used
+func ShareType(share Share) string {
+	switch share {
+	case ShareInGame:
+		return "in game"
+	case SharePrivate:
+		return "private"
+	default:
+		return "unknown"
+	}
+}
+
+// IsShare determines if an int64 corresponds to a Share type
+func IsShare(share int) bool {
+	return share == int(ShareInGame) || share == int(SharePrivate)
+}
 
 // Event is the common interface of all events.
 type Event interface {
 	GetID() int64
 	GetType() string
 	GetPlayerID() id.UID
+	GetShare() Share
+	SetShare(share Share)
 	GetPlayerName() string
 	GetEdit() int64
 	SetEdit(edited int64)
@@ -20,11 +49,12 @@ type Event interface {
 
 // core is the basic values put into events.
 type core struct {
-	ID         int64  `json:"id"`             // ID of the event
-	Type       string `json:"ty"`             // Type of the event
-	Edit       int64  `json:"edit,omitempty"` // Edit time of the event
-	PlayerID   id.UID `json:"pID"`            // ID of the player who posted the event
-	PlayerName string `json:"pName"`          // Name of the player who posted the event
+	ID         int64  `json:"id"`              // ID of the event
+	Type       string `json:"ty"`              // Type of the event
+	Edit       int64  `json:"edit,omitempty"`  // Edit time of the event
+	Share      int64  `json:"share,omitempty"` // share state of the event
+	PlayerID   id.UID `json:"pID"`             // ID of the player who posted the event
+	PlayerName string `json:"pName"`           // Name of the player who posted the event
 }
 
 // GetID returns the timestamp ID of the event.
@@ -51,6 +81,16 @@ func (c *core) GetPlayerName() string {
 // GetEdit gets the event's edit time
 func (c *core) GetEdit() int64 {
 	return c.Edit
+}
+
+// GetShare gets the event's share state
+func (c *core) GetShare() Share {
+	return Share(c.Share)
+}
+
+// SetShare sets the event's share state
+func (c *core) SetShare(share Share) {
+	c.Share = int64(share)
 }
 
 // SetEdit updates the event's edit time
@@ -106,11 +146,12 @@ func Parse(input []byte) (Event, error) {
 }
 
 // makeCore produces an EventCore of the given type using the given player.
-func makeCore(ty string, player *player.Player) core {
+func makeCore(ty string, player *player.Player, share Share) core {
 	return core{
 		ID:         id.NewEventID(),
 		Type:       ty,
 		Edit:       0,
+		Share:      0,
 		PlayerID:   player.ID,
 		PlayerName: player.Name,
 	}
@@ -121,6 +162,7 @@ func makeCore(ty string, player *player.Player) core {
 // as it'd come back escaped.
 var eventTyParse = regexp.MustCompile(`"ty":"([^"]+)"`)
 var eventIDParse = regexp.MustCompile(`"id":(\d+)`)
+var eventShareParse = regexp.MustCompile(`"share":(\d+)`)
 
 // ParseTy gives the `ty` field for an event string.
 // This should only be used for logging.
@@ -140,4 +182,16 @@ func ParseID(event string) string {
 		return "????????"
 	}
 	return match[1]
+}
+
+// ParseShare gives the `share` field for an event.
+func ParseShare(event string) (Share, bool) {
+	match := eventShareParse.FindStringSubmatch(event)
+	if len(match) != 1 {
+		return -1, false
+	}
+	if share, err := strconv.Atoi(match[1]); err != nil {
+		return Share(share), true
+	}
+	return -1, false
 }

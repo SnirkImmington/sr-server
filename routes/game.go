@@ -100,6 +100,10 @@ func handleUpdateEvent(response Response, request *Request) {
 			}
 			glitchyField.SetInt(int64(glitchy))
 			diff["glitchy"] = glitchy
+		case "share":
+			httpBadRequest(response, request, "Event diff: cannot update share here")
+		default:
+			logf(request, "Received unknown value %v = %v", key, value)
 		}
 	}
 
@@ -109,6 +113,52 @@ func handleUpdateEvent(response Response, request *Request) {
 	httpInternalErrorIf(response, request, err)
 
 	httpSuccess(response, request, "Updated event ", evt.GetID())
+}
+
+var _ = gameRouter.HandleFunc("/share-roll", handleShareEvent).Methods("POST")
+
+type shareEventRequest struct {
+	ID    int64 `json:"id"`
+	Share int   `json:"share"`
+}
+
+func handleShareEvent(response Response, request *Request) {
+	logRequest(request)
+	sess, conn, err := requestSession(request)
+	httpUnauthorizedIf(response, request, err)
+
+	var shareRequest shareEventRequest
+	err = readBodyJSON(request, &shareRequest)
+	httpInternalErrorIf(response, request, err)
+
+	if !event.IsShare(shareRequest.Share) {
+		httpBadRequest(response, request, "Invalid share type")
+	}
+	share := event.Share(shareRequest.Share)
+
+	logf(request,
+		"%v requests to share %v %v",
+		sess.PlayerID, shareRequest.ID, event.ShareType(share),
+	)
+
+	eventText, err := event.GetByID(sess.GameID, shareRequest.ID, conn)
+	httpBadRequestIf(response, request, err)
+	evt, err := event.Parse([]byte(eventText))
+	httpInternalErrorIf(response, request, err)
+
+	if evt.GetPlayerID() != sess.PlayerID {
+		httpForbidden(response, request, "You may not edit this event")
+	}
+	if evt.GetType() == event.EventTypePlayerJoin {
+		httpForbidden(response, request, "You may not edit this event")
+	}
+
+	// Gotta be idempotent
+	if evt.GetShare() == share {
+		httpSuccess(response, request, "No change")
+		return
+	}
+
 }
 
 var _ = gameRouter.HandleFunc("/delete-roll", handleDeleteEvent).Methods("POST")
@@ -154,6 +204,7 @@ func handleDeleteEvent(response Response, request *Request) {
 type rollRequest struct {
 	Count   int    `json:"count"`
 	Title   string `json:"title"`
+	Share   int    `json:"share,omitempty"`
 	Edge    bool   `json:"edge"`
 	Glitchy int    `json:"glitchy"`
 }
@@ -176,29 +227,32 @@ func handleRoll(response Response, request *Request) {
 	if roll.Count > config.MaxSingleRoll {
 		httpBadRequest(response, request, "Roll count too high")
 	}
+	if !event.IsShare(roll.Share) {
+		httpBadRequest(response, request, "share: invalid")
+	}
+	share := event.Share(roll.Share)
 
 	player, err := sess.GetPlayer(conn)
 	httpInternalErrorIf(response, request, err)
 
 	var evt event.Event
-	// Note that roll generation is possibly blocking
 	if roll.Edge {
 		rolls := sr.ExplodingSixes(roll.Count)
-		logf(request, "%v: edge roll: %v",
-			sess.PlayerInfo(), rolls,
+		logf(request, "%v: edge roll %v: %v",
+			sess.PlayerInfo(), event.ShareType(share), rolls,
 		)
 		rollEvent := event.ForEdgeRoll(
-			player, roll.Title, rolls, roll.Glitchy,
+			player, share, roll.Title, rolls, roll.Glitchy,
 		)
 		evt = &rollEvent
 	} else {
 		dice := make([]int, roll.Count)
 		hits := sr.FillRolls(dice)
-		logf(request, "%v rolls %v (%v hits)",
-			sess.PlayerInfo(), dice, hits,
+		logf(request, "%v rolls %v dice %v (%v hits)",
+			sess.PlayerInfo(), dice, event.ShareType(share), hits,
 		)
 		rollEvent := event.ForRoll(
-			player, roll.Title, dice, roll.Glitchy,
+			player, share, roll.Title, dice, roll.Glitchy,
 		)
 		evt = &rollEvent
 	}
@@ -213,6 +267,7 @@ func handleRoll(response Response, request *Request) {
 
 type initiativeRollRequest struct {
 	Title string `json:"title"`
+	Share int    `json:"share"`
 	Base  int    `json:"base"`
 	Dice  int    `json:"dice"`
 }
@@ -225,9 +280,6 @@ func handleRollInitiative(response Response, request *Request) {
 	sess, conn, err := requestSession(request)
 	httpUnauthorizedIf(response, request, err)
 
-	player, err := sess.GetPlayer(conn)
-	httpInternalErrorIf(response, request, err)
-
 	var roll initiativeRollRequest
 	err = readBodyJSON(request, &roll)
 	httpInternalErrorIf(response, request, err)
@@ -235,10 +287,6 @@ func handleRollInitiative(response Response, request *Request) {
 	if roll.Title != "" {
 		displayedTitle = roll.Title
 	}
-	logf(request, "Initiative request from %v to roll %v + %v (%v)",
-		sess.String(), roll.Base, roll.Dice, displayedTitle,
-	)
-
 	if roll.Dice < 1 {
 		httpBadRequest(response, request, "Invalid dice count")
 	}
@@ -248,15 +296,26 @@ func handleRollInitiative(response Response, request *Request) {
 	if roll.Dice > 5 {
 		httpBadRequest(response, request, "Cannot roll more than 5 dice")
 	}
+	if !event.IsShare(roll.Share) {
+		httpBadRequest(response, request, "share: invalid")
+	}
+	share := event.Share(roll.Share)
+
+	logf(request, "Initiative request from %v to roll %v + %vd6 (%v)",
+		sess.String(), roll.Base, roll.Dice, displayedTitle,
+	)
+
+	player, err := sess.GetPlayer(conn)
+	httpInternalErrorIf(response, request, err)
 
 	dice := make([]int, roll.Dice)
 	sr.FillRolls(dice)
 
-	logf(request, "%v rolls %v + %v for `%v`",
-		sess.PlayerInfo(), roll.Base, dice, roll.Title,
+	logf(request, "%v rolls %v %v + %v for `%v`",
+		sess.PlayerInfo(), share, roll.Base, dice, roll.Title,
 	)
 	event := event.ForInitiativeRoll(
-		player, roll.Title, roll.Base, dice,
+		player, share, roll.Title, roll.Base, dice,
 	)
 	err = game.PostEvent(sess.GameID, &event, conn)
 	httpInternalErrorIf(response, request, err)
@@ -382,13 +441,12 @@ func handleEvents(response Response, request *Request) {
 		oldest, newest, sess.PlayerInfo(),
 	)
 
+	plr, err := sess.GetPlayer(conn)
+	httpInternalErrorIf(response, request, err)
 	events, err := event.GetBetween(
 		sess.GameID, newest, oldest, config.MaxEventRange, conn,
 	)
-	if err != nil {
-		logf(request, "Unable to list events from redis: %v", err)
-		httpInternalErrorIf(response, request, err)
-	}
+	httpInternalErrorIf(response, request, err)
 
 	var eventRange eventRangeResponse
 	var message string
@@ -407,6 +465,9 @@ func handleEvents(response Response, request *Request) {
 			if err != nil {
 				err := fmt.Errorf("error parsing event %v: %w", i, err)
 				httpInternalErrorIf(response, request, err)
+			}
+			if !game.PlayerCanSeeEvent(plr, evt) {
+				continue
 			}
 			parsed[i] = evt
 		}

@@ -5,8 +5,33 @@ import (
 	"fmt"
 	"github.com/gomodule/redigo/redis"
 	"sr/event"
+	"sr/player"
 	"sr/update"
 )
+
+func PlayerCanSeeEvent(plr *player.Player, evt event.Event) bool {
+	return (evt.GetShare() == event.ShareInGame) ||
+		(evt.GetShare() == event.SharePrivate && evt.GetPlayerID() == plr.ID)
+}
+
+func PlayerCanSeeEventString(plr *player.Player, eventString string) bool {
+	share, ok := event.ParseShare(eventString)
+	if !ok {
+		return false
+	}
+	return (share == event.ShareInGame) ||
+		(share == event.SharePrivate && event.ParseID(eventString) == string(plr.ID))
+}
+
+func FilterEvents(plr *player.Player, events []string) []string {
+	results := make([]string, len(events)/2)
+	for _, evt := range events {
+		if PlayerCanSeeEventString(plr, evt) {
+			results = append(results, evt)
+		}
+	}
+	return results
+}
 
 // PostEvent posts an event to Redis and returns the generated ID.
 func PostEvent(gameID string, event event.Event, conn redis.Conn) error {
@@ -73,7 +98,7 @@ func DeleteEvent(gameID string, eventID int64, conn redis.Conn) error {
 	return nil
 }
 
-// Update replaces an event in the database and notifies players of the change.
+// UpdateEvent replaces an event in the database and notifies players of the change.
 func UpdateEvent(gameID string, newEvent event.Event, update update.Event, conn redis.Conn) error {
 	eventID := newEvent.GetID()
 	eventBytes, err := json.Marshal(newEvent)
