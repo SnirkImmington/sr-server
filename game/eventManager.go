@@ -64,7 +64,7 @@ func PostEvent(gameID string, evt event.Event, conn redis.Conn) error {
 		return fmt.Errorf("redis error EXECing event post: %w", err)
 	}
 	if len(results) != 2 || results[0] != 1 {
-		return fmt.Errorf("redis error posting event, expected [1, *?], got %v", results)
+		return fmt.Errorf("redis error posting event, expected [1, *], got %v", results)
 	}
 	return nil
 }
@@ -176,7 +176,7 @@ func UpdateEvent(gameID string, newEvent event.Event, update update.Event, conn 
 		return fmt.Errorf("redis error EXECing event post: %w", err)
 	}
 	if len(results) != 3 || results[0] != 1 || results[1] != 1 {
-		return fmt.Errorf("redis error updating event, expected 3 results got %v", results)
+		return fmt.Errorf("redis error updating event, expected [1, 1, *], got %v", results)
 	}
 	return nil
 }

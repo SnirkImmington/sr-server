@@ -207,7 +207,7 @@ func handleDeleteEvent(response Response, request *Request) {
 type rollRequest struct {
 	Count   int    `json:"count"`
 	Title   string `json:"title"`
-	Share   int    `json:"share,omitempty"`
+	Share   int    `json:"share"`
 	Edge    bool   `json:"edge"`
 	Glitchy int    `json:"glitchy"`
 }
@@ -260,7 +260,6 @@ func handleRoll(response Response, request *Request) {
 		logf(request, "%#v", rollEvent)
 		evt = &rollEvent
 	}
-	logf(request, "Got event %v, share %v", evt, evt.GetShare())
 	err = game.PostEvent(sess.GameID, evt, conn)
 	httpInternalErrorIf(response, request, err)
 	httpSuccess(
@@ -305,8 +304,8 @@ func handleRollInitiative(response Response, request *Request) {
 	}
 	share := event.Share(roll.Share)
 
-	logf(request, "Initiative request from %v to roll %v + %vd6 (%v)",
-		sess.String(), roll.Base, roll.Dice, displayedTitle,
+	logf(request, "Initiative request from %v to roll %v + %vd6 %v (%v)",
+		sess.String(), roll.Base, roll.Dice, share.String(), displayedTitle,
 	)
 
 	player, err := sess.GetPlayer(conn)
@@ -315,8 +314,8 @@ func handleRollInitiative(response Response, request *Request) {
 	dice := make([]int, roll.Dice)
 	sr.FillRolls(dice)
 
-	logf(request, "%v rolls %v %v + %v for `%v`",
-		sess.PlayerInfo(), share, roll.Base, dice, roll.Title,
+	logf(request, "%v rolls %v + %v %v for `%v`",
+		sess.PlayerInfo(), roll.Base, dice, share.String(), roll.Title,
 	)
 	event := event.ForInitiativeRoll(
 		player, share, roll.Title, roll.Base, dice,
