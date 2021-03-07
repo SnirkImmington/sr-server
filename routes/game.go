@@ -73,7 +73,6 @@ func handleUpdateEvent(response Response, request *Request) {
 	updateTime := id.NewEventID()
 	evt.SetEdit(updateTime)
 	diff := make(map[string]interface{})
-	update := update.ForEventDiff(evt, diff)
 	for key, value := range updateRequest.Diff {
 		switch key {
 		// Title: the player can set the event title.
@@ -106,16 +105,14 @@ func handleUpdateEvent(response Response, request *Request) {
 			logf(request, "Received unknown value %v = %v", key, value)
 		}
 	}
+	update := update.ForEventDiff(evt, diff)
 
 	logf(request, "Event %v diff %v", evt.GetID(), diff)
-
 	err = game.UpdateEvent(sess.GameID, evt, update, conn)
 	httpInternalErrorIf(response, request, err)
-
-	httpSuccess(response, request, "Updated event ", evt.GetID())
 }
 
-var _ = gameRouter.HandleFunc("/share-roll", handleShareEvent).Methods("POST")
+var _ = gameRouter.HandleFunc("/edit-share", handleShareEvent).Methods("POST")
 
 type shareEventRequest struct {
 	ID    int64 `json:"id"`
@@ -138,7 +135,7 @@ func handleShareEvent(response Response, request *Request) {
 
 	logf(request,
 		"%v requests to share %v %v",
-		sess.PlayerID, shareRequest.ID, event.ShareType(share),
+		sess.PlayerID, shareRequest.ID, share.String(),
 	)
 
 	eventText, err := event.GetByID(sess.GameID, shareRequest.ID, conn)
@@ -159,6 +156,12 @@ func handleShareEvent(response Response, request *Request) {
 		return
 	}
 
+	err = game.UpdateEventShare(sess.GameID, evt, share, conn)
+	httpInternalErrorIf(response, request, err)
+
+	httpSuccess(response, request,
+		"Event ", evt.GetID(), " is now share ", share.String(),
+	)
 }
 
 var _ = gameRouter.HandleFunc("/delete-roll", handleDeleteEvent).Methods("POST")
@@ -195,7 +198,7 @@ func handleDeleteEvent(response Response, request *Request) {
 	logf(request,
 		"%v deleting %#v", sess.PlayerInfo(), evt,
 	)
-	err = game.DeleteEvent(sess.GameID, evt.GetID(), conn)
+	err = game.DeleteEvent(sess.GameID, evt, conn)
 	httpInternalErrorIf(response, request, err)
 
 	httpSuccess(response, request, "Deleted event ", evt.GetID())
@@ -239,7 +242,7 @@ func handleRoll(response Response, request *Request) {
 	if roll.Edge {
 		rolls := sr.ExplodingSixes(roll.Count)
 		logf(request, "%v: edge roll %v: %v",
-			sess.PlayerInfo(), event.ShareType(share), rolls,
+			sess.PlayerInfo(), share.String(), rolls,
 		)
 		rollEvent := event.ForEdgeRoll(
 			player, share, roll.Title, rolls, roll.Glitchy,
@@ -249,14 +252,15 @@ func handleRoll(response Response, request *Request) {
 		dice := make([]int, roll.Count)
 		hits := sr.FillRolls(dice)
 		logf(request, "%v rolls %v dice %v (%v hits)",
-			sess.PlayerInfo(), dice, event.ShareType(share), hits,
+			sess.PlayerInfo(), dice, share.String(), hits,
 		)
 		rollEvent := event.ForRoll(
 			player, share, roll.Title, dice, roll.Glitchy,
 		)
+		logf(request, "%#v", rollEvent)
 		evt = &rollEvent
 	}
-
+	logf(request, "Got event %v, share %v", evt, evt.GetShare())
 	err = game.PostEvent(sess.GameID, evt, conn)
 	httpInternalErrorIf(response, request, err)
 	httpSuccess(
@@ -290,7 +294,7 @@ func handleRollInitiative(response Response, request *Request) {
 	if roll.Dice < 1 {
 		httpBadRequest(response, request, "Invalid dice count")
 	}
-	if roll.Base < 0 {
+	if roll.Base < -2 {
 		httpBadRequest(response, request, "Invalid initiative base")
 	}
 	if roll.Dice > 5 {
@@ -357,6 +361,7 @@ func handleReroll(response Response, request *Request) {
 		logf(request, "Expecting to parse previous roll")
 		httpBadRequest(response, request, "Invalid previous roll")
 	}
+
 	logf(request, "Got previous roll `%v` %v",
 		previousRoll.Title, previousRoll.Dice,
 	)
@@ -459,7 +464,7 @@ func handleEvents(response Response, request *Request) {
 		}
 		message = "0 events"
 	} else {
-		parsed := make([]event.Event, len(events))
+		var parsed []event.Event
 		for i, eventText := range events {
 			evt, err := event.Parse([]byte(eventText))
 			if err != nil {
@@ -469,20 +474,29 @@ func handleEvents(response Response, request *Request) {
 			if !game.PlayerCanSeeEvent(plr, evt) {
 				continue
 			}
-			parsed[i] = evt
+			parsed = append(parsed, evt)
 		}
-		firstID := parsed[0].GetID()
-		lastID := parsed[len(parsed)-1].GetID()
+		if len(parsed) == 0 {
+			eventRange = eventRangeResponse{
+				Events: []event.Event{},
+				LastID: 0,
+				More:   false,
+			}
+			message = "0 events"
+		} else {
+			firstID := parsed[0].GetID()
+			lastID := parsed[len(parsed)-1].GetID()
 
-		eventRange = eventRangeResponse{
-			Events: parsed,
-			LastID: lastID,
-			More:   len(events) == config.MaxEventRange,
+			eventRange = eventRangeResponse{
+				Events: parsed,
+				LastID: lastID,
+				More:   len(events) == config.MaxEventRange,
+			}
+			message = fmt.Sprintf(
+				"[%v ... %v] ; %v events",
+				firstID, lastID, len(events),
+			)
 		}
-		message = fmt.Sprintf(
-			"[%v ... %v] ; %v events",
-			firstID, lastID, len(events),
-		)
 	}
 
 	err = writeBodyJSON(response, eventRange)
