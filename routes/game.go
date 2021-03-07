@@ -355,39 +355,42 @@ func handleReroll(response Response, request *Request) {
 
 	previousRollText, err := event.GetByID(sess.GameID, reroll.RollID, conn)
 	httpInternalErrorIf(response, request, err)
+	previousRollType := event.ParseTy(previousRollText)
+	if previousRollType != "roll" {
+		httpBadRequest(response, request, "Invalid previous roll type")
+	}
+
 	var previousRoll event.Roll
 	err = json.Unmarshal([]byte(previousRollText), &previousRoll)
 	if err != nil {
 		logf(request, "Expecting to parse previous roll")
 		httpBadRequest(response, request, "Invalid previous roll")
 	}
-
 	logf(request, "Got previous roll `%v` %v",
 		previousRoll.Title, previousRoll.Dice,
 	)
 
+	newRound := sr.RerollFailures(previousRoll.Dice)
+	if len(newRound) == 0 {
+		// Cannot reroll failures on all hits
+		httpBadRequest(response, request, "Invalid previous roll")
+	}
+
 	player, err := sess.GetPlayer(conn)
 	httpInternalErrorIf(response, request, err)
 
-	if reroll.Type == sr.RerollTypeRerollFailures {
-		newRound := sr.RerollFailures(previousRoll.Dice)
-		if len(newRound) == 0 {
-			// Cannot reroll failures on all hits
-			httpBadRequest(response, request, "Invalid previous roll")
-		}
-		rerolled := event.ForReroll(
-			player, &previousRoll, [][]int{newRound, previousRoll.Dice},
-		)
-		update := update.ForSecondChance(&rerolled, newRound)
-		err = game.UpdateEvent(sess.GameID, &rerolled, update, conn)
-		httpInternalErrorIf(response, request, err)
+	rerolled := event.ForReroll(
+		player, &previousRoll, [][]int{newRound, previousRoll.Dice},
+	)
+	//update := update.ForSecondChance(&rerolled, newRound)
+	err = game.DeleteEvent(sess.GameID, &previousRoll, conn)
+	httpInternalErrorIf(response, request, err)
+	err = game.PostEvent(sess.GameID, &rerolled, conn)
+	httpInternalErrorIf(response, request, err)
 
-		httpSuccess(
-			response, request, "Rerolled ", rerolled.ID, newRound,
-		)
-	} else {
-		httpBadRequest(response, request, "Invalid reroll type")
-	}
+	httpSuccess(
+		response, request, "Rerolled ", rerolled.ID, newRound,
+	)
 }
 
 func collectRolls(in interface{}) ([]int, error) {
