@@ -165,7 +165,7 @@ func ParseShare(event string) (Share, bool) {
 		return -1, false
 	}
 	if share, err := strconv.Atoi(match[1]); err != nil {
-		return Share(share), true
+		return Share(share), IsShare(share)
 	}
 	return -1, false
 }
