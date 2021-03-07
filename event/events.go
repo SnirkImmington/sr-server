@@ -9,32 +9,6 @@ import (
 	"strconv"
 )
 
-// Share is the sharing option for events
-type Share int
-
-// ShareInGame means an event is shared with the whole game
-const ShareInGame = Share(0)
-
-// SharePrivate means an event is only known by its sender
-const SharePrivate = Share(1)
-
-// ShareType displays the type of share used
-func ShareType(share Share) string {
-	switch share {
-	case ShareInGame:
-		return "in game"
-	case SharePrivate:
-		return "private"
-	default:
-		return "unknown"
-	}
-}
-
-// IsShare determines if an int64 corresponds to a Share type
-func IsShare(share int) bool {
-	return share == int(ShareInGame) || share == int(SharePrivate)
-}
-
 // Event is the common interface of all events.
 type Event interface {
 	GetID() int64
@@ -49,12 +23,12 @@ type Event interface {
 
 // core is the basic values put into events.
 type core struct {
-	ID         int64  `json:"id"`              // ID of the event
-	Type       string `json:"ty"`              // Type of the event
-	Edit       int64  `json:"edit,omitempty"`  // Edit time of the event
-	Share      int64  `json:"share,omitempty"` // share state of the event
-	PlayerID   id.UID `json:"pID"`             // ID of the player who posted the event
-	PlayerName string `json:"pName"`           // Name of the player who posted the event
+	ID         int64  `json:"id"`             // ID of the event
+	Type       string `json:"ty"`             // Type of the event
+	Edit       int64  `json:"edit,omitempty"` // Edit time of the event
+	Share      int    `json:"share"`          // share state of the event
+	PlayerID   id.UID `json:"pID"`            // ID of the player who posted the event
+	PlayerName string `json:"pName"`          // Name of the player who posted the event
 }
 
 // GetID returns the timestamp ID of the event.
@@ -90,7 +64,7 @@ func (c *core) GetShare() Share {
 
 // SetShare sets the event's share state
 func (c *core) SetShare(share Share) {
-	c.Share = int64(share)
+	c.Share = int(share)
 }
 
 // SetEdit updates the event's edit time
@@ -151,7 +125,7 @@ func makeCore(ty string, player *player.Player, share Share) core {
 		ID:         id.NewEventID(),
 		Type:       ty,
 		Edit:       0,
-		Share:      0,
+		Share:      int(share),
 		PlayerID:   player.ID,
 		PlayerName: player.Name,
 	}
