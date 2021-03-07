@@ -57,14 +57,13 @@ func PostEvent(gameID string, evt event.Event, conn redis.Conn) error {
 	}
 	err = conn.Send("PUBLISH", channel, bytes)
 	if err != nil {
-		return fmt.Errorf("redis error ending publish event to history: %w", err)
+		return fmt.Errorf("redis error sending publish event to history: %w", err)
 	}
-
 	results, err := redis.Ints(conn.Do("EXEC"))
 	if err != nil {
 		return fmt.Errorf("redis error EXECing event post: %w", err)
 	}
-	if len(results) > 2 || results[0] != 1 {
+	if len(results) != 2 || results[0] != 1 {
 		return fmt.Errorf("redis error posting event, expected [1, *?], got %v", results)
 	}
 	return nil
@@ -74,7 +73,7 @@ func PostEvent(gameID string, evt event.Event, conn redis.Conn) error {
 func DeleteEvent(gameID string, evt event.Event, conn redis.Conn) error {
 	channel := UpdateChannel(gameID, evt)
 	eventID := evt.GetID()
-	updateBytes, err := json.Marshal(update.ForEventDelete(evt.GetID()))
+	updateBytes, err := json.Marshal(update.ForEventDelete(eventID))
 	if err != nil {
 		return fmt.Errorf("redis error marshalling event delete update: %w", err)
 	}
@@ -166,7 +165,6 @@ func UpdateEvent(gameID string, newEvent event.Event, update update.Event, conn 
 	if err != nil {
 		return fmt.Errorf("redis error sending event delete: %w", err)
 	}
-
 	err = conn.Send("PUBLISH", channel, updateBytes)
 	if err != nil {
 		return fmt.Errorf("redis error sending event publish: %w", err)
@@ -177,14 +175,8 @@ func UpdateEvent(gameID string, newEvent event.Event, update update.Event, conn 
 	if err != nil {
 		return fmt.Errorf("redis error EXECing event post: %w", err)
 	}
-	if len(results) != 3 {
-		return fmt.Errorf("redis error updating event, expected 2 results got %v", results)
-	}
-	if results[0] != 1 {
-		return fmt.Errorf("redis error deleting event, expected [1, 1, *], got %v", results)
-	}
-	if results[1] != 1 {
-		return fmt.Errorf("redis error re-adding event, expected [1, 1, *], got %v", results)
+	if len(results) != 3 || results[0] != 1 || results[1] != 1 {
+		return fmt.Errorf("redis error updating event, expected 3 results got %v", results)
 	}
 	return nil
 }
