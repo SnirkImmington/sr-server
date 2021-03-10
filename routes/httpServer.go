@@ -19,6 +19,8 @@ import (
 
 var restRouter = apiRouter()
 
+var staticRouter = makeStaticRouter()
+
 // BaseRouter produces a router for the API
 func BaseRouter() *mux.Router {
 	router := mux.NewRouter()
@@ -35,8 +37,18 @@ func BaseRouter() *mux.Router {
 
 func apiRouter() *mux.Router {
 	router := BaseRouter()
+	// router.Host(config.API_HOST)
 	router.Use(mux.MiddlewareFunc(headersMiddleware))
 	router.NotFoundHandler = http.HandlerFunc(notFoundHandler)
+	return router
+}
+
+func makeStaticRouter() *mux.Router {
+	router := BaseRouter()
+	router.Use(
+	//mux.MiddlewareFunc(headersMiddleware),
+	//mux.MiddlewareFunc(compressionMiddleware)
+	)
 	return router
 }
 
