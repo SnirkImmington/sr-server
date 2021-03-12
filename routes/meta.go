@@ -14,9 +14,15 @@ var _ = restRouter.HandleFunc("/", handleRoot).Methods("GET")
 
 func handleRoot(response Response, request *Request) {
 	logRequest(request)
-	http.Redirect(response, request, config.FrontendAddress, http.StatusSeeOther)
-	cacheIndefinitely(request, response)
-	logf(request, ">> 307 %v", config.FrontendAddress)
+	if config.HostFrontend == "redirect" {
+		http.Redirect(response, request, config.FrontendOrigin.String(), http.StatusSeeOther)
+		logf(request, ">> 307 %v", config.FrontendOrigin)
+		return
+	}
+	response.Header().Set("Content-Type", "text/plain")
+	_, err := response.Write([]byte("Yep, this is the API."))
+	httpInternalErrorIf(response, request, err)
+	httpNotFound(response, request, "Yep, this is the API.")
 }
 
 var _ = restRouter.HandleFunc("/robots.txt", handleRobots).Methods("GET")
@@ -24,9 +30,10 @@ var _ = restRouter.HandleFunc("/robots.txt", handleRobots).Methods("GET")
 func handleRobots(response Response, request *Request) {
 	logRequest(request)
 	// No bots in the API please
+	response.Header().Set("Content-Type", "text/plain")
+	response.Header().Set("Cache-Control", "max-age=31536000, public, immutable")
 	_, err := response.Write([]byte("user-agent: *\ndisallow: *"))
 	httpInternalErrorIf(response, request, err)
-	cacheIndefinitely(request, response)
 	httpSuccess(response, request, "user-agent: * disallow: *")
 }
 
@@ -34,6 +41,7 @@ var _ = restRouter.HandleFunc("/coffee", handleCoffee).Methods("GET")
 
 func handleCoffee(response Response, request *Request) {
 	logRequest(request)
+	response.Header().Set("Content-Type", "text/plain")
 	http.Error(response, "Soy coffee only", http.StatusTeapot)
 	cacheIndefinitely(request, response)
 	logf(request, ">> 418 Soy coffee only")

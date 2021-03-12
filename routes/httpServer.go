@@ -78,8 +78,8 @@ func makeCORSConfig() *cors.Cors {
 	if config.IsProduction {
 		c = cors.New(cors.Options{
 			AllowedOrigins: []string{
-				config.FrontendDomain,
-				"https://" + config.TLSHostname,
+				config.FrontendOrigin.String(),
+				config.BackendOrigin.String(),
 			},
 			AllowedHeaders:   []string{"Authentication", "Content-Type"},
 			AllowCredentials: true,
@@ -169,7 +169,7 @@ func MakeHTTPRedirectServer() *http.Server {
 	if config.TLSAutocertDir != "" {
 		server.Handler = certManager.HTTPHandler(server.Handler)
 	}
-	server.Addr = config.PublishRedirect
+	server.Addr = config.RedirectListenHTTP
 	return server
 }
 
@@ -178,7 +178,7 @@ func MakeHTTPSiteServer() *http.Server {
 	restRouter.NewRoute().HandlerFunc(notFoundHandler)
 	router := c.Handler(restRouter)
 	server := makeServerFromRouter(router)
-	server.Addr = config.PublishHTTP
+	server.Addr = config.MainListenHTTP
 	return server
 }
 
@@ -195,7 +195,7 @@ func MakeHTTPSSiteServer() *http.Server {
 	router := c.Handler(restRouter)
 	server := makeServerFromRouter(router)
 	server.TLSConfig = tlsConf
-	server.Addr = config.PublishHTTPS
+	server.Addr = config.MainListenHTTPS
 	return server
 }
 
