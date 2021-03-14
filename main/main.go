@@ -114,17 +114,17 @@ func main() {
 		panic(fmt.Sprintf("Unable to walk routes: %v", err))
 	}
 
-	if config.PublishRedirect != "" {
+	if config.RedirectListenHTTP != "" {
 		redirectServer := routes.MakeHTTPRedirectServer()
 		go runServer("redirect", redirectServer, false)
 	}
 
-	if config.PublishHTTP != "" {
+	if config.MainListenHTTP != "" {
 		siteServer := routes.MakeHTTPSiteServer()
-		runServer("API", siteServer, false)
+		runServer("main", siteServer, false)
 	} else {
 		siteServer := routes.MakeHTTPSSiteServer()
-		runServer("API", siteServer, true)
+		runServer("main", siteServer, true)
 	}
 	// Wait for all handlers to finish and return cleanly
 	shutdownHandler.WaitGroup.Wait()

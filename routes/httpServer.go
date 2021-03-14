@@ -17,17 +17,16 @@ import (
 // HTTP Routers
 //
 
-var restRouter = apiRouter()
-
-var staticRouter = makeStaticRouter()
+var restRouter = makeAPIRouter()
 
 // BaseRouter produces a router for the API
-func BaseRouter() *mux.Router {
+func makeBaseRouter() *mux.Router {
 	router := mux.NewRouter()
 	router.Use(
 		mux.MiddlewareFunc(requestContextMiddleware),
 		mux.MiddlewareFunc(recoveryMiddleware),
 		mux.MiddlewareFunc(rateLimitedMiddleware),
+		mux.MiddlewareFunc(universalHeadersMiddleware),
 	)
 	if config.SlowResponsesDebug {
 		router.Use(mux.MiddlewareFunc(slowResponsesMiddleware))
@@ -35,25 +34,54 @@ func BaseRouter() *mux.Router {
 	return router
 }
 
-func apiRouter() *mux.Router {
-	router := BaseRouter()
-	// router.Host(config.API_HOST)
-	router.Use(mux.MiddlewareFunc(headersMiddleware))
-	router.NotFoundHandler = http.HandlerFunc(notFoundHandler)
+func makeAPIRouter() *mux.Router {
+	router := mux.NewRouter()
+	router.Use(mux.MiddlewareFunc(restHeadersMiddleware))
+	if config.HostFrontend == "redirect" {
+		// For some reason, need to set this here as well
+		router = router.PathPrefix("/api").Subrouter()
+	}
 	return router
 }
 
-func makeStaticRouter() *mux.Router {
-	router := BaseRouter()
-	router.Use(
-	//mux.MiddlewareFunc(headersMiddleware),
-	//mux.MiddlewareFunc(compressionMiddleware)
-	)
+func makeFrontendRouter() *mux.Router {
+	router := mux.NewRouter()
+
+	router.PathPrefix("/static").HandlerFunc(handleFrontendStatic)
+	router.NewRoute().HandlerFunc(handleFrontendBase)
 	return router
 }
 
-func redirectRouter() *mux.Router {
-	router := BaseRouter()
+var loggingHandler = http.HandlerFunc(func(response Response, request *Request) {
+	logRequest(request)
+	logf(request, "Default handler called!")
+	httpInternalError(response, request, "Default handler called")
+})
+
+func makeMainRouter() *mux.Router {
+	base := makeBaseRouter()
+	base.NotFoundHandler = loggingHandler
+	switch config.HostFrontend {
+	case "":
+		base.NewRoute().Handler(restRouter)
+		return base
+	case "by-domain":
+		base.Host(config.BackendOrigin.Host).Handler(restRouter)
+		base.Host(config.FrontendOrigin.Host).Handler(makeFrontendRouter())
+		//base.NotFoundHandler = handleFrontendRedirect
+		return base
+	case "redirect":
+		base.PathPrefix("/api").Handler(restRouter)
+		base.PathPrefix("/static").HandlerFunc(handleFrontendStatic)
+		base.NewRoute().HandlerFunc(handleFrontendBase)
+		return base
+	default:
+		panic("Invalid HOST_FRONTEND option") // should be caught in config validation
+	}
+}
+
+func makeRedirectRouter() *mux.Router {
+	router := makeBaseRouter()
 	router.HandleFunc("/", func(response Response, request *Request) {
 		logf(request, "<< HTTP %v %v %v %v",
 			request.RemoteAddr, request.Proto, request.Method, request.URL,
@@ -72,6 +100,21 @@ func notFoundHandler(response Response, request *Request) {
 	dur := displayRequestDuration(request.Context())
 	logf(request, ">> 404 Not Found (%v)", dur)
 }
+
+var handleFrontendRedirect = http.HandlerFunc(func(response Response, request *Request) {
+	logf(request, "frontend redirect")
+	var status int
+	if config.FrontendRedirectPermanent {
+		status = http.StatusMovedPermanently
+		response.Header().Set("Cache-Control", "max-age=31536000, public, immutable")
+	} else {
+		status = http.StatusSeeOther
+		response.Header().Add("Cache-Control", "max-age=86400, public")
+	}
+	http.Redirect(response, request, config.FrontendOrigin.String(), status)
+	dur := displayRequestDuration(request.Context())
+	logf(request, ">> %v Redirect %v (%v)", status, config.FrontendOrigin.String(), dur)
+})
 
 func makeCORSConfig() *cors.Cors {
 	var c *cors.Cors
@@ -104,6 +147,9 @@ func makeCORSConfig() *cors.Cors {
 func displayRoute(route *mux.Route, handler *mux.Router, parents []*mux.Route) error {
 	indentation := strings.Repeat("  ", len(parents))
 	endpoint, err := route.GetPathTemplate()
+	if config.HostFrontend == "redirect" && endpoint != "/api" {
+		endpoint = strings.TrimPrefix(endpoint, "/api")
+	}
 	if err != nil {
 		endpoint = "[default]"
 	}
@@ -116,9 +162,12 @@ func displayRoute(route *mux.Route, handler *mux.Router, parents []*mux.Route) e
 	return nil
 }
 
+// DisplaySiteRoutes prints the list of routes the restRouter will handle
 func DisplaySiteRoutes() error {
-	err := restRouter.Walk(displayRoute)
-	fmt.Println(" [default] [*]")
+	err := makeMainRouter().Walk(displayRoute)
+	if err != nil {
+		fmt.Println("Error:", err)
+	}
 	fmt.Println()
 	return err
 }
@@ -163,8 +212,9 @@ func autocertTLSConfig() *tls.Config {
 // Servers
 //
 
+// MakeHTTPRedirectServer makes the redirect server
 func MakeHTTPRedirectServer() *http.Server {
-	router := redirectRouter()
+	router := makeRedirectRouter()
 	server := makeServerFromRouter(router)
 	if config.TLSAutocertDir != "" {
 		server.Handler = certManager.HTTPHandler(server.Handler)
@@ -173,15 +223,17 @@ func MakeHTTPRedirectServer() *http.Server {
 	return server
 }
 
+// MakeHTTPSiteServer makes the HTTP (unencrypted) site server
 func MakeHTTPSiteServer() *http.Server {
 	c := makeCORSConfig()
-	restRouter.NewRoute().HandlerFunc(notFoundHandler)
-	router := c.Handler(restRouter)
+	mainRouter := makeMainRouter()
+	router := c.Handler(mainRouter)
 	server := makeServerFromRouter(router)
 	server.Addr = config.MainListenHTTP
 	return server
 }
 
+// MakeHTTPSSiteServer makes the HTTPS site server
 func MakeHTTPSSiteServer() *http.Server {
 	var tlsConf *tls.Config
 	if config.TLSAutocertDir != "" {
@@ -190,9 +242,9 @@ func MakeHTTPSSiteServer() *http.Server {
 		tlsConf = baseTLSConfig()
 	}
 	c := makeCORSConfig()
-	restRouter.NewRoute().HandlerFunc(notFoundHandler)
-	restRouter.Use(tlsHeadersMiddleware)
-	router := c.Handler(restRouter)
+	mainRouter := makeMainRouter()
+	mainRouter.Use(tlsHeadersMiddleware)
+	router := c.Handler(mainRouter)
 	server := makeServerFromRouter(router)
 	server.TLSConfig = tlsConf
 	server.Addr = config.MainListenHTTPS

@@ -26,7 +26,7 @@ func RegisterTasksViaConfig() {
 	}
 }
 
-var tasksRouter = apiRouter().PathPrefix("/task").Subrouter()
+var tasksRouter = makeAPIRouter().PathPrefix("/task").Subrouter()
 
 var _ = tasksRouter.HandleFunc("/clear-all-sessions", handleClearSessions).Methods("GET")
 
