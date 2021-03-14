@@ -18,6 +18,9 @@ var (
 
 	// Debugging flags
 
+	// DebugLogConfig toggles the logging of (the rest of) config loading
+	DebugLogConfig = readBool("LOG_CONFIG", true)
+
 	// CORSDebug toggles debugging from the github/rs/cors library.
 	CORSDebug = readBool("CORS_DEBUG", false)
 
@@ -72,7 +75,7 @@ var (
 	// backend over HTTPS. This also includes an HTTP redirect server (which isn't super
 	// relevant these days).
 	// Set publishing options:
-	// - API_LISTEN_HTTPS=<port>     (< you should use other ports and forward to 80/443 if possible)
+	// - MAIN_LISTEN_HTTPS=<port>     (< you should use other ports and forward to 80/443 if possible)
 	// - REDIRECT_LISTEN_HTTP=<port> (< this makes running as non-root user a non-issue)
 	// - HOST_FRONTEND=by-host-header (default unset, publish the frontend/api via a Host header check)
 	// The frontend publishes at the Host/subdomain specified in the CORS options:
@@ -104,7 +107,7 @@ var (
 	// MainListenHTTPS is the port which the main server listens for HTTPS requests
 	MainListenHTTPS = readString("MAIN_LISTEN_HTTPS", "")
 	// HostFrontend determines if and how the frontend site is hosted
-	HostFrontend = readString("HOST_FRONTEND", "")
+	HostFrontend = readString("HOST_FRONTEND", "redirect") // ""
 
 	// Redirect server configuration (HTTP -> HTTPS forwarder)
 
@@ -143,7 +146,7 @@ var (
 	// BackendOrigin is the origin (scheme://host:port) for the backend server
 	BackendOrigin = readOrigin("BACKEND_ORIGIN", "http://localhost:3001")
 	// FrontendOrigin is the origin (scheme://host:port) for the frontend server
-	FrontendOrigin = readOrigin("FRONTEND_ORIGIN", "http://localhost:3000")
+	FrontendOrigin = readOrigin("FRONTEND_ORIGIN", "http://localhost:3001")
 
 	// Frontend server configuration
 	// These options are used when the frontend site is hosted via the main server.
@@ -152,6 +155,12 @@ var (
 	FrontendBasePath = readString("FRONTEND_BASE_PATH", "")
 	// FrontendGzipped indicates a .gz copy of each file on the frontend is pregenerated
 	FrontendGzipped = readBool("FRONTEND_GZIPPED", true)
+	// UnhostedFrontendRedirect toggles whether the root URL of the main server should point
+	// to the frontend domain, when the frontend is not being hosted.
+	UnhostedFrontendRedirect = readBool("UNHOSTED_FRONTEND_REDIRECT", true)
+	// FrontendRedirectPermanent toggles whether the redirect to the frontend domain is permanent.
+	// This should really only be used for shadowroller.net
+	FrontendRedirectPermanent = readBool("FRONTEND_REDIRECT_PERMANENT", false)
 
 	// Timeouts
 
@@ -358,5 +367,8 @@ func VerifyConfig() {
 	}
 	if HostFrontend == "by-domain" && (FrontendOrigin.Host == BackendOrigin.Host) {
 		panic("Must have differing FRONTEND_DOMAIN and BACKEND_DOMAIN hosts for HOST_FRONTEND=by-domain")
+	}
+	if HostFrontend != "" && FrontendBasePath == "" {
+		panic("Frontend is hosted, FRONTEND_BASE_PATH must be set!")
 	}
 }
