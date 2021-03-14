@@ -2,4 +2,4 @@
 
 set -e
 
-find @1 -type f -name '*.gz' -print -exec rm {} \;
+find $1 -type f -name '*.gz' -print -exec rm {} \;
