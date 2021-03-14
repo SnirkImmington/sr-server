@@ -29,19 +29,19 @@ func stringArrayContains(array []string, val string) bool {
 
 func invalidPath(path string) bool {
 	trimmed := strings.Trim(path, "/")
-	return path == "." || !fs.ValidPath(path)
+	return trimmed == "." || !fs.ValidPath(trimmed)
 }
 
 func etagForFile(subFolder string, fileName string) string {
 	ext := path.Ext(fileName) // the .map files have the same hash as the originals
 	switch subFolder {
-	case "css/":
+	case "css":
 		var lastDot int
 		// {main|i}.hash.chunk.css[.map]
 		if strings.HasSuffix(fileName, ".map") {
-			lastDot := len(fileName) - len(".chunk.css.map")
+			lastDot = len(fileName) - len(".chunk.css.map")
 		} else if strings.HasSuffix(fileName, ".css") {
-			lastDot := len(fileName) - len(".chunk.css")
+			lastDot = len(fileName) - len(".chunk.css")
 		} else {
 			return ""
 		}
@@ -49,29 +49,36 @@ func etagForFile(subFolder string, fileName string) string {
 		if len(fileName)-lastDot < 2 {
 			return ""
 		}
-		return fileName[lastDot-hashLength:lastDot] + ext
-	case "media/":
+		return fileName[lastDot-hashLength:lastDot] + ext // map has same name in etag
+	case "media":
 		lastDot := strings.LastIndex(fileName, ".")
 		// expect at least an original file with a name like f.js
 		if lastDot == -1 || len(fileName) < lastDot-hashLength-3 {
 			return ""
 		}
 		return fileName[lastDot-hashLength : lastDot]
-	case "js/":
+	case "js":
 		var offset int
 		if strings.HasPrefix(fileName, "runtime-main.") {
 			offset = len("runtime-main.")
 		} else if strings.HasPrefix(fileName, "main.") {
 			offset = len("main.")
 		} else {
-			offset = strings.Index(fileName, ".")
+			offset = strings.Index(fileName, ".") + 1
 		}
 		if offset == -1 || len(fileName) < offset+hashLength+3 {
 			return ""
 		}
-		return fileName[offset : offset+hashLength]
+		return fileName[offset:offset+hashLength] + ext
 	default:
+		log.Printf("Unknown subfolder %v", subFolder)
 		return ""
+	}
+}
+
+func closeFile(request *Request, file *os.File, path string) {
+	if err := file.Close(); err != nil {
+		logf(request, "Error closing file %v: %v", path, err)
 	}
 }
 
@@ -101,7 +108,7 @@ func openFrontendFile(filePath string, useZipped bool, useDefault bool) (*os.Fil
 		if err == nil {
 			return file, false, true, nil
 		}
-		// allow for not found
+		// allow for not found but if we asked for zipping and didn't zip index.html something's up
 		log.Print("Warning: Error opening /index.html.gz with zipping: %v", err)
 	}
 	// ignore not found, could still be a name issue
@@ -117,93 +124,99 @@ func openFrontendFile(filePath string, useZipped bool, useDefault bool) (*os.Fil
 	return nil, false, true, fmt.Errorf("got not found for /index: %w", err)
 }
 
-// /static/path
+//
+// /static/subdir/file.hash.ext
+//
+
 func handleFrontendStatic(response Response, request *Request) {
-	logRequest(request)
+	logFrontendRequest(request)
 	requestPath := request.URL.Path
 	requestDir, requestFile := path.Split(requestPath)
-	fetchGzipped := config.FrontendGzipped && stringArrayContains(request.Header.Values("Content-Type"), "gzip")
-	logf(request, "static path = %v, dir = %v, file = %v", requestPath, requestDir, requestFile)
+	fetchGzipped := config.FrontendGzipped && strings.Contains(request.Header.Get("Accept-Encoding"), "gzip")
 
-	if invalidPath(requestPath) || strings.Count(requestPath, "/") != 2 {
+	if invalidPath(requestPath) || strings.Count(requestDir, "/") != 3 {
 		logf(request, "Path was invalid")
 		httpBadRequest(response, request, requestPath)
 	}
 	subDir := requestDir[len("static/") : len(requestDir)-1]
-	if !stringArrayContains(validStaticSubdirs, subDir) {
+	if !stringArrayContains(validStaticSubdirs, subDir[1:]) {
 		logf(request, "Invalid subdir %v", subDir)
 		httpNotFound(response, request, requestPath)
 	}
-	logf(request, "Received request for static %v file %v", subDir, requestFile)
 
 	// This data is seriously cacheable
 	response.Header().Set("Cache-Control", "max-age=31536000, public, immutable")
 
-	etag := etagForFile(subDir, requestFile)
+	etag := etagForFile(subDir[1:], requestFile)
 	if etag != "" {
-		logf(request, "Adding etag %v", etag)
 		response.Header().Add("Etag", etag)
+		logf(request, "## Added etag %v", etag)
+	} else {
+		logf(request, "Unable to add etag for %v", requestFile)
 	}
 
 	file, zipped, defaulted, err := openFrontendFile(requestPath, fetchGzipped, false)
+	if defaulted {
+		httpInternalError(response, request, "Should not have defaulted on a static file")
+	}
 	httpInternalErrorIf(response, request, err)
-	defer file.Close()
+	defer closeFile(request, file, requestPath)
 
 	info, err := file.Stat()
 	httpInternalErrorIf(response, request, err)
 
+	response.Header().Add("Vary", "Accept-Encoding")
 	if zipped {
 		response.Header().Add("Content-Encoding", "gzip")
-		response.Header().Add("Vary", "Accept-Encoding")
-	}
-
-	if etag == "" {
-		logf(request, "!! Unable to find etag for request to %v", requestPath)
 	}
 
 	// calls checkIfMatch(), which looks at modtime/If-Unmodified-Since and Etag/If-None-Match header.
 	// we've already set the Etag, so if the client's already seen this, we can skip actually reading the file.
 	http.ServeContent(response, request, requestFile, info.ModTime(), file)
+	logServedContent(response, request, requestFile, zipped)
 }
 
 // /path
 func handleFrontendBase(response Response, request *Request) {
-	logRequest(request)
+	logFrontendRequest(request)
 	requestPath := request.URL.Path
 	requestDir, requestFile := path.Split(requestPath)
-	fetchGzipped := config.FrontendGzipped && stringArrayContains(request.Header.Values("Content-Type"), "gzip")
-	logf(request, "path = `%v`, dir = `%v`, file = `%v`", requestPath, requestDir, requestFile)
+	fetchGzipped := config.FrontendGzipped && strings.Contains(request.Header.Get("Accept-Encoding"), "gzip")
 
-	logf(request, "Getting a non-static file")
 	resetPath := func() {
 		requestDir = "/"
 		requestFile = "index.html"
 		requestPath = "/index.html"
 	}
 
+	if requestDir == "/" && requestFile == "" {
+		logf(request, "-- It's a request to /, serve index.html")
+		resetPath()
+	}
+
 	// If it's a subdir that's not /static, we know without checking that file doesn't exist
 	// This should be the case with most SPA paths, i.e. /join/<gameID> but not /about.
 	if strings.Count(requestDir, "/") != 1 {
-		logf(request, "It's a subpath, definitely going to need /index.html")
+		logf(request, "It's a subpath, definitely going to need /index.html instead")
 		resetPath()
 	}
 
 	// We shouldn't set a max-age cache header, we should rely on if-not-modified (and also just set up PWA stuff).
 	// response.Header.Set("Cache-Control", "max-age=86400")
-
-	file, zipped, defaulted, err := openFrontendFile(requestPath, fetchGzipped, true)
+	file, zipped, _, err := openFrontendFile(requestPath, fetchGzipped, true)
 	httpInternalErrorIf(response, request, err)
-	defer file.Close()
+	defer closeFile(request, file, requestPath)
 
 	info, err := file.Stat()
 	httpInternalErrorIf(response, request, err)
 
+	response.Header().Add("Vary", "Accept-Encoding")
 	if zipped {
 		response.Header().Add("Content-Encoding", "gzip")
-		response.Header().Add("Vary", "Accept-Encoding")
 	}
 
 	// Serve the content in the file, sending the original MIME type (based on file name)
 	// calls checkIfMatch(), which only checks modtime since we don't add cache information.
 	http.ServeContent(response, request, requestFile, info.ModTime(), file)
+	logServedContent(response, request, requestFile, zipped)
 }
