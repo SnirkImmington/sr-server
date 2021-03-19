@@ -20,8 +20,6 @@ func handleRoot(response Response, request *Request) {
 		return
 	}
 	response.Header().Set("Content-Type", "text/plain")
-	_, err := response.Write([]byte("Yep, this is the API."))
-	httpInternalErrorIf(response, request, err)
 	httpNotFound(response, request, "Yep, this is the API.")
 }
 
