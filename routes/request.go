@@ -25,12 +25,6 @@ type Response = http.ResponseWriter
 
 var errExtraBody = errors.New("encountered additional data after end of JSON body")
 
-func logIfError(request *Request, err error, format string) {
-	if err != nil {
-		rawLog(1, request, format+": %v", err)
-	}
-}
-
 // closeRedis closes the redis connection and logs any errors found
 func closeRedis(request *Request, conn redis.Conn) {
 	if config.RedisConnectionsDebug {
