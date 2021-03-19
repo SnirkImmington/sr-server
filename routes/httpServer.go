@@ -52,6 +52,12 @@ func makeFrontendRouter() *mux.Router {
 	return router
 }
 
+func makeTasksRouter() *mux.Router {
+	router := mux.NewRouter()
+	router.NotFoundHandler = http.HandlerFunc(notFoundHandler)
+	return router.PathPrefix("/task").Subrouter()
+}
+
 var shouldNotBeCalledHandler = http.HandlerFunc(func(response Response, request *Request) {
 	logRequest(request)
 	logf(request, "Default handler called!")
@@ -101,7 +107,7 @@ func notFoundHandler(response Response, request *Request) {
 }
 
 var handleFrontendRedirect = http.HandlerFunc(func(response Response, request *Request) {
-	logf(request, "frontend redirect")
+	logRequest(request)
 	var status int
 	if config.FrontendRedirectPermanent {
 		status = http.StatusMovedPermanently
@@ -161,7 +167,7 @@ func displayRoute(route *mux.Route, handler *mux.Router, parents []*mux.Route) e
 	return nil
 }
 
-// DisplaySiteRoutes prints the list of routes the restRouter will handle
+// DisplaySiteRoutes prints the list of routes the site will handle
 func DisplaySiteRoutes() error {
 	err := makeMainRouter().Walk(displayRoute)
 	if err != nil {
