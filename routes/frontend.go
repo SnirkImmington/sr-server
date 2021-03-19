@@ -18,6 +18,8 @@ const hashLength = 8
 
 var validStaticSubdirs = []string{"media", "js", "css"}
 
+var frontendRouter = makeFrontendRouter()
+
 func stringArrayContains(array []string, val string) bool {
 	for _, inArray := range array {
 		if inArray == val {
@@ -128,6 +130,8 @@ func openFrontendFile(filePath string, useZipped bool, useDefault bool) (*os.Fil
 // /static/subdir/file.hash.ext
 //
 
+var _ = frontendRouter.PathPrefix("/static").HandlerFunc(handleFrontendStatic)
+
 func handleFrontendStatic(response Response, request *Request) {
 	logFrontendRequest(request)
 	requestPath := request.URL.Path
@@ -155,10 +159,7 @@ func handleFrontendStatic(response Response, request *Request) {
 		logf(request, "Unable to add etag for %v", requestFile)
 	}
 
-	file, zipped, defaulted, err := openFrontendFile(requestPath, fetchGzipped, false)
-	if defaulted {
-		httpInternalError(response, request, "Should not have defaulted on a static file")
-	}
+	file, zipped, _, err := openFrontendFile(requestPath, fetchGzipped, false)
 	httpInternalErrorIf(response, request, err)
 	defer closeFile(request, file, requestPath)
 
@@ -175,6 +176,8 @@ func handleFrontendStatic(response Response, request *Request) {
 	http.ServeContent(response, request, requestFile, info.ModTime(), file)
 	logServedContent(response, request, requestFile, zipped)
 }
+
+var _ = frontendRouter.NewRoute().HandlerFunc(handleFrontendBase)
 
 // /path
 func handleFrontendBase(response Response, request *Request) {

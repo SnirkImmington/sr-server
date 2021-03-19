@@ -52,7 +52,7 @@ func makeFrontendRouter() *mux.Router {
 	return router
 }
 
-var loggingHandler = http.HandlerFunc(func(response Response, request *Request) {
+var shouldNotBeCalledHandler = http.HandlerFunc(func(response Response, request *Request) {
 	logRequest(request)
 	logf(request, "Default handler called!")
 	httpInternalError(response, request, "Default handler called")
@@ -60,20 +60,19 @@ var loggingHandler = http.HandlerFunc(func(response Response, request *Request) 
 
 func makeMainRouter() *mux.Router {
 	base := makeBaseRouter()
-	base.NotFoundHandler = loggingHandler
+	base.NotFoundHandler = shouldNotBeCalledHandler
 	switch config.HostFrontend {
 	case "":
 		base.NewRoute().Handler(restRouter)
 		return base
 	case "by-domain":
 		base.Host(config.BackendOrigin.Host).Handler(restRouter)
-		base.Host(config.FrontendOrigin.Host).Handler(makeFrontendRouter())
-		//base.NotFoundHandler = handleFrontendRedirect
+		base.Host(config.FrontendOrigin.Host).Handler(frontendRouter)
+		base.NotFoundHandler = handleFrontendRedirect // Should only be called if an invalid Host is specified by a client
 		return base
 	case "redirect":
 		base.PathPrefix("/api").Handler(restRouter)
-		base.PathPrefix("/static").HandlerFunc(handleFrontendStatic)
-		base.NewRoute().HandlerFunc(handleFrontendBase)
+		base.NewRoute().Handler(frontendRouter)
 		return base
 	default:
 		panic("Invalid HOST_FRONTEND option") // should be caught in config validation
