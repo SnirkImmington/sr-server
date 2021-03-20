@@ -56,7 +56,6 @@ func makeFrontendRouter() *mux.Router {
 
 func makeTasksRouter() *mux.Router {
 	router := mux.NewRouter()
-	router.NotFoundHandler = http.HandlerFunc(notFoundHandler)
 	return router.PathPrefix("/task").Subrouter()
 }
 
@@ -71,13 +70,12 @@ func makeMainRouter() *mux.Router {
 	base.NotFoundHandler = shouldNotBeCalledHandler
 	switch config.HostFrontend {
 	case "":
-		base.NewRoute().Handler(restRouter)
+		base.NewRoute().Name("Backend").Handler(restRouter)
 		return base
 	case "by-domain":
 		base.Host(config.BackendOrigin.Host).Name(config.BackendOrigin.Host).Handler(restRouter)
 		base.Host(config.FrontendOrigin.Host).Name(config.FrontendOrigin.Host).Handler(frontendRouter)
 		base.NewRoute().Name("[Default Host redirect]").Handler(handleFrontendRedirect) // Called if an invalid host is specified
-		//base.NotFoundHandler = handleFrontendRedirect // Should only be called if an invalid Host is specified by a client
 		return base
 	case "redirect":
 		base.PathPrefix("/api").Handler(restRouter)
