@@ -88,9 +88,8 @@ func runServer(name string, server *http.Server, tls bool) {
 func main() {
 	log.SetOutput(os.Stdout)
 	if config.IsProduction {
-		log.SetFlags(
-			log.Ldate | log.Ltime | log.LUTC | log.Lmicroseconds,
-		)
+		// You may want to set UTC logs here
+		log.SetFlags(log.Ldate | log.Ltime)
 	} else {
 		log.SetFlags(log.Ltime | log.Lshortfile)
 	}
