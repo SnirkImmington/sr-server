@@ -46,9 +46,11 @@ func makeAPIRouter() *mux.Router {
 
 func makeFrontendRouter() *mux.Router {
 	router := mux.NewRouter()
-
-	router.PathPrefix("/static").HandlerFunc(handleFrontendStatic)
-	router.NewRoute().HandlerFunc(handleFrontendBase)
+	// router.Use(
+	//     // No frontend middleware
+	// )
+	router.PathPrefix("/static").HandlerFunc(handleFrontendStatic).Methods("GET")
+	router.NewRoute().Name("/").HandlerFunc(handleFrontendBase).Methods("GET")
 	return router
 }
 
@@ -72,13 +74,14 @@ func makeMainRouter() *mux.Router {
 		base.NewRoute().Handler(restRouter)
 		return base
 	case "by-domain":
-		base.Host(config.BackendOrigin.Host).Handler(restRouter)
-		base.Host(config.FrontendOrigin.Host).Handler(frontendRouter)
-		base.NotFoundHandler = handleFrontendRedirect // Should only be called if an invalid Host is specified by a client
+		base.Host(config.BackendOrigin.Host).Name(config.BackendOrigin.Host).Handler(restRouter)
+		base.Host(config.FrontendOrigin.Host).Name(config.FrontendOrigin.Host).Handler(frontendRouter)
+		base.NewRoute().Name("[Default Host redirect]").Handler(handleFrontendRedirect) // Called if an invalid host is specified
+		//base.NotFoundHandler = handleFrontendRedirect // Should only be called if an invalid Host is specified by a client
 		return base
 	case "redirect":
 		base.PathPrefix("/api").Handler(restRouter)
-		base.NewRoute().Handler(frontendRouter)
+		base.NewRoute().Name("Frontend").Handler(frontendRouter)
 		return base
 	default:
 		panic("Invalid HOST_FRONTEND option") // should be caught in config validation
@@ -156,7 +159,12 @@ func displayRoute(route *mux.Route, handler *mux.Router, parents []*mux.Route) e
 		endpoint = strings.TrimPrefix(endpoint, "/api")
 	}
 	if err != nil {
-		endpoint = "[default]"
+		if route.GetName() != "" {
+			endpoint = route.GetName()
+		} else {
+			log.Printf("Attempting to walk %#v %#v, got %v", route, endpoint, err)
+			endpoint = "[default]"
+		}
 	}
 	methods, err := route.GetMethods()
 	if err != nil { // it's a top level thing

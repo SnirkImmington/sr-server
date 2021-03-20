@@ -130,7 +130,8 @@ func openFrontendFile(filePath string, useZipped bool, useDefault bool) (*os.Fil
 // /static/subdir/file.hash.ext
 //
 
-var _ = frontendRouter.PathPrefix("/static").HandlerFunc(handleFrontendStatic)
+// Part of makeFrontendRouter
+//var _ = frontendRouter.PathPrefix("/static").HandlerFunc(handleFrontendStatic)
 
 func handleFrontendStatic(response Response, request *Request) {
 	logFrontendRequest(request)
@@ -177,7 +178,8 @@ func handleFrontendStatic(response Response, request *Request) {
 	logServedContent(response, request, requestFile, zipped)
 }
 
-var _ = frontendRouter.NewRoute().HandlerFunc(handleFrontendBase)
+// Part of makeFrontendRouter
+//var _ = frontendRouter.NewRoute().HandlerFunc(handleFrontendBase)
 
 // /path
 func handleFrontendBase(response Response, request *Request) {
