@@ -137,9 +137,9 @@ var (
 	// If the frontend is hosted by sr-server, it uses the FrontendOrigin to check
 	// the Host header of requests.
 
-	// DisableCors disables the CORS checks and sends the host forward. Not compatible
+	// DisableCORS disables the CORS checks and sends the host forward. Not compatible
 	// with a production environment.
-	DisableCors = readBool("DISABLE_CORS_CHECKS", !IsProduction)
+	DisableCORS = readBool("DISABLE_CORS_CHECKS", !IsProduction)
 	// BackendOrigin is the origin (scheme://host:port) for the backend server
 	BackendOrigin = readOrigin("BACKEND_ORIGIN", "http://localhost:3001")
 	// FrontendOrigin is the origin (scheme://host:port) for the frontend server

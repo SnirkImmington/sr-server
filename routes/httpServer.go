@@ -124,7 +124,7 @@ var handleFrontendRedirect = http.HandlerFunc(func(response Response, request *R
 
 func makeCORSConfig() *cors.Cors {
 	var c *cors.Cors
-	if config.IsProduction {
+	if config.IsProduction || !config.DisableCORS {
 		c = cors.New(cors.Options{
 			AllowedOrigins: []string{
 				config.FrontendOrigin.String(),
@@ -138,7 +138,7 @@ func makeCORSConfig() *cors.Cors {
 		c = cors.New(cors.Options{
 			AllowOriginFunc: func(origin string) bool {
 				if config.CORSDebug {
-					log.Print("Accepting CORS origin ", origin)
+					log.Printf("Accepting CORS origin %v", origin)
 				}
 				return true
 			},
