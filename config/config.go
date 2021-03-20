@@ -18,9 +18,6 @@ var (
 
 	// Debugging flags
 
-	// DebugLogConfig toggles the logging of (the rest of) config loading
-	DebugLogConfig = readBool("LOG_CONFIG", true)
-
 	// CORSDebug toggles debugging from the github/rs/cors library.
 	CORSDebug = readBool("CORS_DEBUG", false)
 
@@ -146,7 +143,7 @@ var (
 	// BackendOrigin is the origin (scheme://host:port) for the backend server
 	BackendOrigin = readOrigin("BACKEND_ORIGIN", "http://localhost:3001")
 	// FrontendOrigin is the origin (scheme://host:port) for the frontend server
-	FrontendOrigin = readOrigin("FRONTEND_ORIGIN", "http://localhost:3001")
+	FrontendOrigin = readOrigin("FRONTEND_ORIGIN", "http://localhost:3000")
 
 	// Frontend server configuration
 	// These options are used when the frontend site is hosted via the main server.
