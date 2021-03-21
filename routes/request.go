@@ -125,7 +125,7 @@ func logFrontendRequest(request *Request) {
 			extra = fmt.Sprintf(" %v", grabbed)
 		}
 		rawLog(1, request,
-			"++ %v%v %v %v %v",
+			"<* %v%v %v %v %v",
 			requestRemoteIP(request),
 			extra,
 			request.Proto,
@@ -133,7 +133,7 @@ func logFrontendRequest(request *Request) {
 			request.URL,
 		)
 	} else {
-		rawLog(1, request, "(( %v %v", request.Method, request.URL)
+		rawLog(1, request, "<* %v %v", request.Method, request.URL)
 	}
 }
 
@@ -175,5 +175,5 @@ func logServedContent(response Response, request *Request, fileName string, zipp
 	if !zipped {
 		msg = "unzipped"
 	}
-	rawLog(1, request, fmt.Sprintf(")) Served %v %v (%v)", fileName, msg, dur))
+	rawLog(1, request, fmt.Sprintf("*> Served %v %v (%v)", fileName, msg, dur))
 }

@@ -84,19 +84,24 @@ func closeFile(request *Request, file *os.File, path string) {
 	}
 }
 
-func openFrontendFile(filePath string, useZipped bool, useDefault bool) (*os.File, bool, bool, error) {
+func openFrontendFile(request *Request, filePath string, useZipped bool, useDefault bool) (*os.File, bool, bool, error) {
 	var file *os.File
 	var err error
+	var storagePath string
 	// Try to open <file>.gz
 	if useZipped {
-		file, err := os.Open(path.Join(config.FrontendBasePath, filePath+".gz"))
+		storagePath = path.Join(config.FrontendBasePath, filePath+".gz")
+		logf(request, "Zipped exact %s", storagePath)
+		file, err := os.Open(storagePath)
 		if err == nil {
 			return file, true, false, nil
 		}
 	}
 	// Either not found, or can't use compressed
 	// Try to open <file>
-	file, err = os.Open(path.Join(config.FrontendBasePath, filePath))
+	storagePath = path.Join(config.FrontendBasePath, filePath)
+	logf(request, "Unzipped exact %s", storagePath)
+	file, err = os.Open(storagePath)
 	if err == nil {
 		return file, false, false, nil
 	}
@@ -106,15 +111,19 @@ func openFrontendFile(filePath string, useZipped bool, useDefault bool) (*os.Fil
 	}
 	if useZipped {
 		// Try to open index.html.gz
-		file, err = os.Open(path.Join(config.FrontendBasePath, "index.html.gz"))
+		storagePath = path.Join(config.FrontendBasePath, "index.html.gz")
+		logf(request, "Zipped index %s", storagePath)
+		file, err = os.Open(storagePath)
 		if err == nil {
-			return file, false, true, nil
+			return file, true, true, nil
 		}
 		// allow for not found but if we asked for zipping and didn't zip index.html something's up
 		log.Print("Warning: Error opening /index.html.gz with zipping: %v", err)
 	}
 	// ignore not found, could still be a name issue
 	// Try to open index.html
+	storagePath = path.Join(config.FrontendBasePath, "index.html")
+	logf(request, "Unzipped index %s", storagePath)
 	file, err = os.Open(path.Join(config.FrontendBasePath, "index.html"))
 	if err == nil {
 		return file, false, true, nil
@@ -155,12 +164,12 @@ func handleFrontendStatic(response Response, request *Request) {
 	etag := etagForFile(subDir[1:], requestFile)
 	if etag != "" {
 		response.Header().Add("Etag", etag)
-		logf(request, "## Added etag %v", etag)
+		logf(request, "Added etag %v", etag)
 	} else {
 		logf(request, "Unable to add etag for %v", requestFile)
 	}
 
-	file, zipped, _, err := openFrontendFile(requestPath, fetchGzipped, false)
+	file, zipped, _, err := openFrontendFile(request, requestPath, fetchGzipped, false)
 	httpInternalErrorIf(response, request, err)
 	defer closeFile(request, file, requestPath)
 
@@ -170,6 +179,10 @@ func handleFrontendStatic(response Response, request *Request) {
 	response.Header().Add("Vary", "Accept-Encoding")
 	if zipped {
 		response.Header().Add("Content-Encoding", "gzip")
+	}
+
+	if strings.HasSuffix(requestFile, ".map") {
+		response.Header().Set("Content-Type", "application/json")
 	}
 
 	// calls checkIfMatch(), which looks at modtime/If-Unmodified-Since and Etag/If-None-Match header.
@@ -195,7 +208,7 @@ func handleFrontendBase(response Response, request *Request) {
 	}
 
 	if requestDir == "/" && requestFile == "" {
-		logf(request, "-- It's a request to /, serve index.html")
+		logf(request, "It's a request to /, serve index.html")
 		resetPath()
 	}
 
@@ -208,7 +221,11 @@ func handleFrontendBase(response Response, request *Request) {
 
 	// We shouldn't set a max-age cache header, we should rely on if-not-modified (and also just set up PWA stuff).
 	// response.Header.Set("Cache-Control", "max-age=86400")
-	file, zipped, _, err := openFrontendFile(requestPath, fetchGzipped, true)
+	file, zipped, defaulted, err := openFrontendFile(request, requestPath, fetchGzipped, true)
+	if defaulted {
+		logf(request, "Exact file not found, used /index.html")
+		resetPath()
+	}
 	httpInternalErrorIf(response, request, err)
 	defer closeFile(request, file, requestPath)
 
