@@ -109,7 +109,7 @@ var (
 	// Redirect server configuration (HTTP -> HTTPS forwarder)
 
 	// RedirectListenHTTP is the port which the redirect server listens for HTTP requests
-	RedirectListenHTTP = readString("FRONTEND_LISTEN_HTTP", "")
+	RedirectListenHTTP = readString("REDIRECT_LISTEN_HTTP", "")
 	// ReverseProxied must be set to true if an HTTP-only main server is used on
 	// production. It is ignored otherwise.
 	ReverseProxied = readBool("REVERSE_PROXIED", false)
@@ -123,10 +123,6 @@ var (
 	// using an external system to update your pem&key files, or submit an issue
 	// or pull request.
 
-	// TLSHostname is the domain name of the server, used for HTTP redirects and
-	// HTTPS configuration.
-	// This must be set if PublishHTTPS is used.
-	TLSHostname = readString("TLS_HOSTNAME", "localhost")
 	// TLSAutocertDir is the directory where Let's Encrypt certificates are kept.
 	TLSAutocertDir = readString("TLS_AUTOCERT_CERT_DIR", "")
 	// TLSCertFiles is a list of the file names for the pem, private key cert files.
@@ -138,7 +134,8 @@ var (
 	// the Host header of requests.
 
 	// DisableCORS disables the CORS checks and sends the host forward. Not compatible
-	// with a production environment.
+	// with a production environment. If CORS checks are disabled and the frontend isn't
+	// being hosted or redirected to (as is the typical development case), FrontendOrigin is unused.
 	DisableCORS = readBool("DISABLE_CORS_CHECKS", !IsProduction)
 	// BackendOrigin is the origin (scheme://host:port) for the backend server
 	BackendOrigin = readOrigin("BACKEND_ORIGIN", "http://localhost:3001")
@@ -149,7 +146,7 @@ var (
 	// These options are used when the frontend site is hosted via the main server.
 
 	// FrontendBasePath is the base path for the frontend.
-	FrontendBasePath = readString("FRONTEND_BASE_PATH", "")
+	FrontendBasePath = readString("FRONTEND_BASE_PATH", "/home/snirk/git/shadowroller/build-presite/")
 	// FrontendGzipped indicates a .gz copy of each file on the frontend is pregenerated
 	FrontendGzipped = readBool("FRONTEND_GZIPPED", true)
 	// UnhostedFrontendRedirect toggles whether the root URL of the main server should point
@@ -335,8 +332,8 @@ func VerifyConfig() {
 		if MainListenHTTP != "" && !ReverseProxied {
 			panic("Must set ReverseProxied if using an HTTP server on production")
 		}
-		if TLSHostname == "localhost" {
-			log.Print("Warning: TLSHostname = \"localhost\" on production")
+		if BackendOrigin.Host == "localhost" {
+			log.Print("Warning: Hostname = \"localhost\" on production")
 		}
 		if len(HealthCheckSecretKey) != 0 && len(HealthCheckSecretKey) < 256 {
 			panic("HealthcheckSecretKey should be longer")
@@ -359,13 +356,13 @@ func VerifyConfig() {
 		panic("Must set one of TLSAutocertDir and TLSCertFiles!")
 	}
 
-	if HostFrontend != "" && HostFrontend != "by-domain" && HostFrontend != "redirect" {
-		panic("Invalid value for HostFrontend; expected unset, by-domain, or redirect!")
+	if HostFrontend != "" && HostFrontend != "by-domain" && HostFrontend != "redirect" && HostFrontend != "subroute" {
+		panic("Invalid value for HostFrontend; expected unset, redirect, subroute, or by-domain!")
 	}
 	if HostFrontend == "by-domain" && (FrontendOrigin.Host == BackendOrigin.Host) {
 		panic("Must have differing FRONTEND_DOMAIN and BACKEND_DOMAIN hosts for HOST_FRONTEND=by-domain")
 	}
-	if HostFrontend != "" && FrontendBasePath == "" {
+	if HostFrontend != "" && HostFrontend != "redirect" && FrontendBasePath == "" {
 		panic("Frontend is hosted, FRONTEND_BASE_PATH must be set!")
 	}
 }
