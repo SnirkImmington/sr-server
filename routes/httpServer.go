@@ -37,8 +37,8 @@ func makeBaseRouter() *mux.Router {
 func makeAPIRouter() *mux.Router {
 	router := mux.NewRouter()
 	router.Use(mux.MiddlewareFunc(restHeadersMiddleware))
-	if config.HostFrontend == "redirect" {
-		// For some reason, need to set this here as well
+	// This is a requirement for use of PathPrefix, it's pretty annoying
+	if config.HostFrontend == "subroute" {
 		router = router.PathPrefix("/api").Subrouter()
 	}
 	return router
@@ -70,15 +70,22 @@ func makeMainRouter() *mux.Router {
 	base.NotFoundHandler = shouldNotBeCalledHandler
 	switch config.HostFrontend {
 	case "":
+		restRouter.HandleFunc("/", handleRoot).Name("(Unhelpful)").Methods("GET")
 		base.NewRoute().Name("Backend").Handler(restRouter)
 		return base
+	case "redirect":
+		restRouter.HandleFunc("/", handleFrontendRedirect).Methods("GET")
+		base.NewRoute().Name("Backend + redirect").Handler(restRouter)
+		return base
 	case "by-domain":
+		restRouter.HandleFunc("/", handleRoot).Methods("GET")
 		base.Host(config.BackendOrigin.Host).Name(config.BackendOrigin.Host).Handler(restRouter)
 		base.Host(config.FrontendOrigin.Host).Name(config.FrontendOrigin.Host).Handler(frontendRouter)
-		base.NewRoute().Name("[Default Host redirect]").Handler(handleFrontendRedirect) // Called if an invalid host is specified
+		base.NewRoute().Name("[*] [Default Host redirect]").HandlerFunc(handleFrontendRedirect)
 		return base
-	case "redirect":
-		base.PathPrefix("/api").Handler(restRouter)
+	case "subroute":
+		restRouter.HandleFunc("/", handleRoot).Methods("GET")
+		base.PathPrefix("/api").Name("Backend").Handler(restRouter)
 		base.NewRoute().Name("Frontend").Handler(frontendRouter)
 		return base
 	default:
@@ -92,7 +99,7 @@ func makeRedirectRouter() *mux.Router {
 		logf(request, "<< HTTP %v %v %v %v",
 			request.RemoteAddr, request.Proto, request.Method, request.URL,
 		)
-		newURL := "https://" + config.TLSHostname + request.URL.String()
+		newURL := config.BackendOrigin.String() + request.URL.String()
 		http.Redirect(response, request, newURL, http.StatusMovedPermanently)
 		dur := displayRequestDuration(request.Context())
 		logf(request, ">> 308 %v (%v)", newURL, dur)
@@ -106,21 +113,6 @@ func notFoundHandler(response Response, request *Request) {
 	dur := displayRequestDuration(request.Context())
 	logf(request, ">> 404 Not Found (%v)", dur)
 }
-
-var handleFrontendRedirect = http.HandlerFunc(func(response Response, request *Request) {
-	logRequest(request)
-	var status int
-	if config.FrontendRedirectPermanent {
-		status = http.StatusMovedPermanently
-		response.Header().Set("Cache-Control", "max-age=31536000, public, immutable")
-	} else {
-		status = http.StatusSeeOther
-		response.Header().Add("Cache-Control", "max-age=86400, public")
-	}
-	http.Redirect(response, request, config.FrontendOrigin.String(), status)
-	dur := displayRequestDuration(request.Context())
-	logf(request, ">> %v Redirect %v (%v)", status, config.FrontendOrigin.String(), dur)
-})
 
 func makeCORSConfig() *cors.Cors {
 	var c *cors.Cors
@@ -153,13 +145,14 @@ func makeCORSConfig() *cors.Cors {
 func displayRoute(route *mux.Route, handler *mux.Router, parents []*mux.Route) error {
 	indentation := strings.Repeat("  ", len(parents))
 	endpoint, err := route.GetPathTemplate()
-	if config.HostFrontend == "redirect" && endpoint != "/api" {
+	if config.HostFrontend == "subroute" && endpoint != "/api" {
 		endpoint = strings.TrimPrefix(endpoint, "/api")
 	}
 	if err != nil {
 		if route.GetName() != "" {
 			endpoint = route.GetName()
 		} else {
+			// All of the "special" routes should be named.
 			log.Printf("Attempting to walk %#v %#v, got %v", route, endpoint, err)
 			endpoint = "[default]"
 		}
@@ -190,7 +183,7 @@ func DisplaySiteRoutes() error {
 // certManager is used when Let's Encrypt is enabled.
 var certManager = autocert.Manager{
 	Prompt:     autocert.AcceptTOS,
-	HostPolicy: autocert.HostWhitelist(config.TLSHostname),
+	HostPolicy: autocert.HostWhitelist(config.BackendOrigin.Host),
 	Cache:      autocert.DirCache(config.TLSAutocertDir),
 }
 

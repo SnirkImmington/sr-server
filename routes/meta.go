@@ -10,17 +10,24 @@ import (
 	"strings"
 )
 
-var _ = restRouter.HandleFunc("/", handleRoot).Methods("GET")
-
 func handleRoot(response Response, request *Request) {
 	logRequest(request)
-	if config.HostFrontend == "redirect" {
-		http.Redirect(response, request, config.FrontendOrigin.String(), http.StatusSeeOther)
-		logf(request, ">> 307 %v", config.FrontendOrigin)
-		return
-	}
 	response.Header().Set("Content-Type", "text/plain")
 	httpNotFound(response, request, "Yep, this is the API.")
+}
+
+func handleFrontendRedirect(response Response, request *Request) {
+	var status int
+	if config.FrontendRedirectPermanent {
+		status = http.StatusMovedPermanently
+		response.Header().Set("Cache-Control", "max-age=31536000, public, immutable")
+	} else {
+		status = http.StatusSeeOther
+		response.Header().Add("Cache-Control", "max-age=86400, public")
+	}
+	http.Redirect(response, request, config.FrontendOrigin.String(), status)
+	dur := displayRequestDuration(request.Context())
+	logf(request, ">> %v Redirect %v (%v)", status, config.FrontendOrigin.String(), dur)
 }
 
 var _ = restRouter.HandleFunc("/robots.txt", handleRobots).Methods("GET")
