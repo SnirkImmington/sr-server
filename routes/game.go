@@ -269,11 +269,12 @@ func handleRoll(response Response, request *Request) {
 }
 
 type initiativeRollRequest struct {
-	Title  string `json:"title"`
-	Share  int    `json:"share"`
-	Base   int    `json:"base"`
-	Dice   int    `json:"dice"`
-	Seized bool   `json:"seized"`
+	Title   string `json:"title"`
+	Share   int    `json:"share"`
+	Base    int    `json:"base"`
+	Dice    int    `json:"dice"`
+	Seized  bool   `json:"seized"`
+	Blitzed bool   `json:"blitzed"`
 }
 
 var _ = gameRouter.HandleFunc("/roll-initiative", handleRollInitiative).Methods("POST")
@@ -319,7 +320,7 @@ func handleRollInitiative(response Response, request *Request) {
 		sess.PlayerInfo(), roll.Base, dice, share.String(), roll.Title,
 	)
 	event := event.ForInitiativeRoll(
-		player, share, roll.Title, roll.Base, dice, roll.Seized,
+		player, share, roll.Title, roll.Base, dice, roll.Seized, roll.Blitzed,
 	)
 	err = game.PostEvent(sess.GameID, &event, conn)
 	httpInternalErrorIf(response, request, err)
