@@ -1,14 +1,34 @@
 package sr
 
 import (
+	"bytes"
 	crypto "crypto/rand"
 	"encoding/binary"
+	"fmt"
 	"log"
 	"math"
 	"math/rand"
 	"sr/config"
 	"time"
 )
+
+// SeedRand seeds the PRNG with bytes from crypo random (/dev/random)
+func SeedRand() {
+	buffer := make([]byte, binary.MaxVarintLen64)
+	_, err := crypto.Read(buffer)
+	if err != nil {
+		log.Printf("Error reading bytes from /dev/random: %v", err)
+		rand.Seed(time.Now().UnixNano())
+		return
+	}
+	reader := bytes.NewReader(buffer)
+	var seed int64
+	err = binary.Read(reader, binary.LittleEndian, &seed)
+	if err != nil {
+		panic(fmt.Sprintf("Unable to get a random int64: %v", err))
+	}
+	rand.Seed(seed)
+}
 
 // RerollTypeRerollFailures represents the "Reroll Failures" use of post-roll edge.
 const RerollTypeRerollFailures = "rerollFailures"
@@ -86,26 +106,6 @@ func SumRolls(roll []int) int {
 	return result
 }
 
-// BeginGeneratingRolls starts the roll server and channel
-func BeginGeneratingRolls() {
-	rollsChan = make(chan int, config.RollBufferSize)
-	go func() {
-		for {
-			seedBytes := make([]byte, 8)
-			_, err := crypto.Read(seedBytes)
-			if err != nil {
-				log.Print("Unable to generate PRNG seed!", err)
-			}
-			seed, _ := binary.Varint(seedBytes)
-
-			rng := rand.New(rand.NewSource(seed))
-			for i := 0; i < config.RollBufferSize; i++ {
-				rollsChan <- rng.Intn(6) + 1
-			}
-		}
-	}()
-}
-
 const rollMax = 6 // RNG uses modulo, anything % 6 is gonna be in { 0, 1, 2, 3, 4, 5 }
 const inputByteMax = math.MaxUint8 - ((math.MaxUint8 % rollMax) + 1)
 
@@ -124,7 +124,7 @@ const inputByteMax = math.MaxUint8 - ((math.MaxUint8 % rollMax) + 1)
 // at the output % 8, we can get 8 values: 0, 1, 2, 3, 4, 5, 6, 7.
 // For each of thse outputs, there are exactly 32 values in the input set which
 // produce the output. The random byte is equally likely to be any of the 8
-// answers.
+// answers. So to generate random(0, 7), we can take the byte % 8.
 //
 // Our dice rolls do not work with this premise as there not the same number of
 // input bytes for each output roll. Taking a byte % 6 is more likely to produce
@@ -133,7 +133,7 @@ const inputByteMax = math.MaxUint8 - ((math.MaxUint8 % rollMax) + 1)
 // We choose our maximum desired value inputByteMax as being closest to the byte
 // max while still having equal number of members which produce th desired rolls.
 // Bytes <= inputByteMax (251) have 42 members which each map to a given roll,
-// satisfying the condition for 8 above.
+// satisfying the condition that 8 did for 255.
 //
 // We are able to get random values <= inputByteMax by generating random bytes
 // and discarding bytes > inputByteMax. Because we assume independant events, each
@@ -141,7 +141,11 @@ const inputByteMax = math.MaxUint8 - ((math.MaxUint8 % rollMax) + 1)
 // 0 .. 255 has a uniform 1/256 chance of appearing in a byte, we should assume
 // each value 0 .. inputByteMax has a 1/inputByteMax+1 chance of appearing in a
 // byte which is <= inputByteMax.
+//
+// Because of the difference between inputByteMax and 255, 2% of random bytes will
+// be discarded.
 
+// GenerateRolls starts a goroutine that fills rollsChan with rolls
 func GenerateRolls() {
 	rollsChan = make(chan int, config.RollBufferSize)
 	go func() {
@@ -158,7 +162,7 @@ func GenerateRolls() {
 			// Read will either read to full or report an error.
 			if err != nil {
 				log.Printf("Error calling roll RNG: %v", err)
-				time.Sleep(time.Duration(5) * time.Millisecond)
+				time.Sleep(time.Duration(50) * time.Millisecond)
 				continue
 			}
 			for _, randByte := range bytes {
@@ -166,7 +170,7 @@ func GenerateRolls() {
 					// convert 0 .. 5 (result of % 6) to 1 .. 6
 					rollsChan <- int((randByte % rollMax) + 1)
 				}
-				// Just skip bytes between inputByteMax and 255;
+				// Just skip bytes between inputByteMax and 255 (2% of bytes)
 			}
 		}
 	}()
