@@ -29,10 +29,6 @@ func handleRollInitiative(response Response, request *Request) {
 	var roll initiativeRollRequest
 	err = readBodyJSON(request, &roll)
 	httpInternalErrorIf(response, request, err)
-	displayedTitle := "initiative"
-	if roll.Title != "" {
-		displayedTitle = roll.Title
-	}
 	if roll.Dice < 1 {
 		httpBadRequest(response, request, "Invalid dice count")
 	}
@@ -42,13 +38,16 @@ func handleRollInitiative(response Response, request *Request) {
 	if roll.Dice > 5 {
 		httpBadRequest(response, request, "Cannot roll more than 5 dice")
 	}
+	if roll.Blitzed {
+		roll.Dice = 5
+	}
 	if !event.IsShare(roll.Share) {
 		httpBadRequest(response, request, "share: invalid")
 	}
 	share := event.Share(roll.Share)
 
-	logf(request, "Initiative request from %v to roll %v + %vd6 %v (%v)",
-		sess.String(), roll.Base, roll.Dice, share.String(), displayedTitle,
+	logf(request, "%v to roll %v + %vd6 %v (blitz = %v, seize = %v) %v",
+		sess.PlayerID, roll.Base, roll.Dice, share.String(), roll.Blitzed, roll.Seized, roll.Title,
 	)
 
 	player, err := sess.GetPlayer(conn)
@@ -56,10 +55,8 @@ func handleRollInitiative(response Response, request *Request) {
 
 	dice := make([]int, roll.Dice)
 	sr.FillRolls(dice)
+	logf(request, "Rolled %v + %v = %v", roll.Base, dice, roll.Base+sr.SumRolls(dice))
 
-	logf(request, "%v rolls %v + %v %v for `%v`",
-		sess.PlayerInfo(), roll.Base, dice, share.String(), roll.Title,
-	)
 	event := event.ForInitiativeRoll(
 		player, share, roll.Title, roll.Base, dice, roll.Seized, roll.Blitzed,
 	)
@@ -132,14 +129,14 @@ func handleEditInitiative(response Response, request *Request) {
 			httpBadRequest(response, request, "Cannot set dice at this time")
 		case "seized":
 			seized, ok := value.(bool)
-			if !ok || seized {
+			if !ok {
 				httpBadRequest(response, request, "seized: can only be unset")
 			}
-			if initEvent.Seized {
+			if initEvent.Seized == seized {
 				continue
 			}
-			initEvent.Seized = true
-			diff["seized"] = true
+			initEvent.Seized = seized
+			diff["seized"] = seized
 		case "blitzed":
 			httpBadRequest(response, request, "blitzed: cannot set")
 		default:

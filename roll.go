@@ -77,6 +77,15 @@ func RerollFailures(original []int) []int {
 
 }
 
+// SumRolls is Array[int].Sum
+func SumRolls(roll []int) int {
+	result := 0
+	for _, die := range roll {
+		result = result + die
+	}
+	return result
+}
+
 // BeginGeneratingRolls starts the roll server and channel
 func BeginGeneratingRolls() {
 	rollsChan = make(chan int, config.RollBufferSize)
