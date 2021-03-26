@@ -194,13 +194,12 @@ func handleRoll(response Response, request *Request) {
 	} else {
 		dice := make([]int, roll.Count)
 		hits := sr.FillRolls(dice)
-		logf(request, "%v rolls %v dice %v (%v hits)",
-			sess.PlayerInfo(), dice, share.String(), hits,
+		logf(request, "%v rolls %v %v (%v hits)",
+			sess.PlayerID, dice, share.String(), hits,
 		)
 		rollEvent := event.ForRoll(
 			player, share, roll.Title, dice, roll.Glitchy,
 		)
-		logf(request, "%#v", rollEvent)
 		evt = &rollEvent
 	}
 	err = game.PostEvent(sess.GameID, evt, conn)
