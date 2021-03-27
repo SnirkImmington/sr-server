@@ -1,6 +1,6 @@
 # Shadowroller Server
 
-_This repository will be merged with https://github.com/SnirkImmington/shadowroller before the next major update._
+## This repository has merged with https://github.com/SnirkImmington/shadowroller.
 
 ![Shadowroller server logs](https://user-images.githubusercontent.com/1468114/94967935-09da2f00-04ce-11eb-9b36-ce3b842abdda.png)
 
